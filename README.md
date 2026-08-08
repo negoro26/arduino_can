@@ -97,7 +97,7 @@ so the laptop is only a screen. The MKR1000 is native USB CDC and appears as
 
 ### Windows
 
-[Tera Term](https://ttssh2.osdn.jp/) lists serial ports in its opening dialog:
+[Tera Term](https://teratermproject.github.io/index-en.html) lists serial ports in its opening dialog:
 
 1. Open Tera Term -> **Serial** -> pick the COM port -> OK
 2. **Setup -> Serial port** -> Speed `115200` -> New setting
