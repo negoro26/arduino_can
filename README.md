@@ -71,21 +71,55 @@ keepalive, which this firmware never sends.
 
 ## Wiring
 
-DB9 on the shield to the car's OBD2 (SAE J1962) socket:
+The shield side is **two 2-position screw terminals**, per the ASX00005
+schematic — there is no DB9 on the Arduino shield:
 
-| OBD2 pin | Signal |
-|---|---|
-| 6 | CAN-H |
-| 14 | CAN-L |
-| 4 or 5 | GND |
+| Terminal | Rating | Signals |
+|---|---|---|
+| `X3` | 2 A | CAN-H, CAN-L (next to the 120R terminator `R3`) |
+| `X2` | 3 A | VIN, GND |
 
-Do **not** connect pin 16 (+12 V). It is not needed and it is the one miswire
-that can do real damage: +12 V onto a ground line shorts the battery through the
-USB cable.
+Car side, OBD2 (SAE J1962). The pinout is fixed by the connector, not by the
+manufacturer, so an untrustworthy aftermarket cable can be checked against this:
 
-If stage 3 reports `0 frames` at both bitrates, **swap CAN-H and CAN-L** — the
-MKR CAN shield's silkscreen labels are reported swapped. Stage 3 is listen-only,
-so retrying costs nothing.
+| OBD2 pin | Signal | Where it goes |
+|---|---|---|
+| 6 | CAN-H | `X3` |
+| 14 | CAN-L | `X3` |
+| 4 or 5 | GND | `X2` GND (leave VIN empty) |
+
+Do **not** connect pin 16 (+12 V). It is not needed — the transceiver is fed
+from the header `5V` pin, so USB alone powers everything.
+
+### Can a miswire damage anything?
+
+**CAN-H / CAN-L: no.** Per the NXP TJA1049 datasheet, `VCANH` and `VCANL` have
+an absolute maximum of **-58 V to +58 V**, and the receiver's *operating*
+common-mode range is **-12 V to +12 V**. Battery voltage on either bus pin is
+within normal operating range, not merely survivable; these pins are designed
+for a bus shorted to battery. ESD rating is +-8 kV. The MCP2515 is never
+exposed, because the transceiver sits between it and the wires.
+
+**GND: yes.** The one genuinely damaging miswire is +12 V landing on a ground
+line, which shorts the battery through the USB cable. That is the connection
+worth double-checking.
+
+### Telling a wiring fault from a wrong bitrate
+
+Stage 3 sweeps 500 / 250 / 125 / 100 kbit in listen-only mode and reports frame
+count alongside the MCP2515 error counters (`REC`, `EFLG`, and `ERRIF`/`MERRF`
+events). That combination is the diagnosis:
+
+| Frames | Errors | Verdict |
+|---|---|---|
+| > 0 | any | **pins correct**, bitrate found |
+| 0 | **> 0** | **pins connected to a live bus** but nothing decodes — swap CAN-H/CAN-L, or the bus runs at an untried rate |
+| 0 | 0 | **not connected** — wrong OBD pins, broken cable, or bus asleep |
+
+The middle row is the useful one: a controller that cannot decode a live
+differential bus still accumulates receive errors, whereas disconnected wires
+produce nothing at all. All of this is listen-only, so retrying any wiring
+permutation is free and cannot disturb the vehicle.
 
 ## Reading the output
 

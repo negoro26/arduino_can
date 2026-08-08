@@ -37,6 +37,11 @@ static MCP2515 mcp2515(PIN_CAN_CS, 8000000, &SPI);
 static const uint8_t REG_CANSTAT = 0x0E;
 static const uint8_t REG_CANCTRL = 0x0F;
 static const uint8_t CANCTRL_OSM = 0x08;  // one-shot mode
+static const uint8_t REG_REC = 0x1D;      // receive error counter
+static const uint8_t REG_CANINTF = 0x2C;  // interrupt flags
+static const uint8_t REG_EFLG = 0x2D;     // error flags
+static const uint8_t CANINTF_ERRIF = 0x20;
+static const uint8_t CANINTF_MERRF = 0x80;
 
 // Diagnostic request IDs live in this range by convention; operational vehicle
 // traffic normally sits below it. The interlock below does not trust that
@@ -180,40 +185,66 @@ static bool stageLoopback() {
 
 // ---------------------------------------------------------------- stage 3
 
-static uint32_t sniff(CAN_SPEED speed, const __FlashStringHelper *label,
-                      unsigned long windowMs) {
+// Result of one listen-only window. `errors` is the discriminator that answers
+// "are my pins even on a CAN bus?": at the WRONG bitrate on a LIVE bus the
+// controller cannot decode anything, so it racks up receive errors. On
+// disconnected or dead wires it sees nothing at all and stays clean.
+struct SniffResult {
+  uint32_t frames;
+  uint32_t errors;  // ERRIF/MERRF events observed during the window
+  uint8_t rec;      // receive error counter
+  uint8_t eflg;     // error flag register
+};
+
+static SniffResult sniff(CAN_SPEED speed, const __FlashStringHelper *label,
+                         unsigned long windowMs) {
+  SniffResult r = {0, 0, 0, 0};
+
   Serial.print(F("    "));
   Serial.print(label);
   Serial.print(F(": "));
 
-  mcp2515.reset();
+  mcp2515.reset();  // also zeroes TEC/REC
   if (mcp2515.setBitrate(speed, MCP_16MHZ) != MCP2515::ERROR_OK ||
       mcp2515.setListenOnlyMode() != MCP2515::ERROR_OK) {
     Serial.println(F("setup failed"));
-    return 0;
+    return r;
   }
 
-  uint32_t frames = 0;
   uint8_t before = g_seenCount;
 
   struct can_frame rx;
   unsigned long deadline = millis() + windowMs;
   while (millis() < deadline) {
+    uint8_t intf = rawRegRead(REG_CANINTF);
+    if (intf & (CANINTF_ERRIF | CANINTF_MERRF)) {
+      r.errors++;
+      rawBitModify(REG_CANINTF, CANINTF_ERRIF | CANINTF_MERRF, 0x00);
+    }
     if (mcp2515.readMessage(&rx) != MCP2515::ERROR_OK) {
       continue;
     }
-    frames++;
+    r.frames++;
     noteSeen(rx.can_id);
   }
 
-  Serial.print(frames);
-  Serial.print(F(" frames"));
-  if (frames == 0) {
-    Serial.println(F("  <- silence (wrong bitrate, wrong pins, or bus asleep)"));
-    return 0;
+  r.rec = rawRegRead(REG_REC);
+  r.eflg = rawRegRead(REG_EFLG);
+
+  Serial.print(r.frames);
+  Serial.print(F(" frames, err="));
+  Serial.print(r.errors);
+  Serial.print(F(" REC="));
+  Serial.print(r.rec);
+  Serial.print(F(" EFLG=0x"));
+  Serial.print(r.eflg, HEX);
+
+  if (r.frames == 0) {
+    Serial.println();
+    return r;
   }
 
-  Serial.print(F(", ids: "));
+  Serial.print(F("  ids: "));
   for (uint8_t i = before; i < g_seenCount; i++) {
     Serial.print(F("0x"));
     Serial.print(g_seenIds[i], HEX);
@@ -223,7 +254,7 @@ static uint32_t sniff(CAN_SPEED speed, const __FlashStringHelper *label,
     Serial.print(F("(list full)"));
   }
   Serial.println();
-  return frames;
+  return r;
 }
 
 static void stageSniff() {
@@ -231,18 +262,49 @@ static void stageSniff() {
   g_seenCount = 0;
   g_busAlive = false;
 
-  if (sniff(CAN_500KBPS, F("500 kbit"), 3000) > 0) {
-    g_busAlive = true;
-    g_busSpeed = CAN_500KBPS;
-    g_busSpeedLabel = F("500 kbit");
-  } else if (sniff(CAN_250KBPS, F("250 kbit"), 3000) > 0) {
-    g_busAlive = true;
-    g_busSpeed = CAN_250KBPS;
-    g_busSpeedLabel = F("250 kbit");
+  // Four bitrates, not two: a Renault comfort/multimedia bus may run at 125 or
+  // 100 kbit. Sweeping all of them makes "wrong bitrate" far less likely to be
+  // mistaken for "wrong pins".
+  struct Candidate {
+    CAN_SPEED speed;
+    const __FlashStringHelper *label;
+  };
+  const Candidate candidates[] = {
+      {CAN_500KBPS, F("500 kbit")},
+      {CAN_250KBPS, F("250 kbit")},
+      {CAN_125KBPS, F("125 kbit")},
+      {CAN_100KBPS, F("100 kbit")},
+  };
+
+  uint32_t totalErrors = 0;
+  for (uint8_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
+    SniffResult r = sniff(candidates[i].speed, candidates[i].label, 2500);
+    totalErrors += r.errors + r.rec;
+    if (r.frames > 0 && !g_busAlive) {
+      g_busAlive = true;
+      g_busSpeed = candidates[i].speed;
+      g_busSpeedLabel = candidates[i].label;
+      break;  // decoding cleanly; no need to try slower rates
+    }
   }
 
+  Serial.println();
   if (!g_busAlive) {
-    Serial.println(F("    bus not detected -- stage 4 will refuse to transmit"));
+    // This is the wiring verdict. Errors without frames means the transceiver
+    // IS seeing differential activity it cannot decode, which proves the pins
+    // are on a live bus. Total silence means they are not.
+    if (totalErrors > 0) {
+      Serial.println(F("    WIRING: pins look CONNECTED to a live bus"));
+      Serial.println(F("      -> bus activity seen but nothing decoded."));
+      Serial.println(F("      -> try swapping CAN-H and CAN-L, or the bus runs"));
+      Serial.println(F("         at a rate not tried here."));
+    } else {
+      Serial.println(F("    WIRING: pins look NOT CONNECTED"));
+      Serial.println(F("      -> zero frames AND zero errors at every bitrate."));
+      Serial.println(F("      -> wrong OBD pins, broken cable, or bus asleep."));
+      Serial.println(F("      -> check ignition is in position II."));
+    }
+    Serial.println(F("    stage 4 will refuse to transmit"));
     return;
   }
 
@@ -254,9 +316,9 @@ static void stageSniff() {
       overlap++;
     }
   }
-  Serial.print(F("    bus alive at "));
-  Serial.print(g_busSpeedLabel);
-  Serial.print(F("; "));
+  Serial.print(F("    WIRING: OK - bus decoding cleanly at "));
+  Serial.println(g_busSpeedLabel);
+  Serial.print(F("    "));
   Serial.print(g_seenCount);
   Serial.print(F(" distinct ids, "));
   Serial.print(overlap);
