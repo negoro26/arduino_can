@@ -1,0 +1,6 @@
+# PlatformIO build output and downloaded libraries
+.pio/
+
+# Serial monitor logs (monitor_filters = log2file)
+logs/
+*.log
