@@ -183,3 +183,40 @@ must be in the `uucp` group (`sudo usermod -aG uucp $USER`, then re-login).
 Library: `autowp/autowp-mcp2515` — chosen over `sandeepmistry/arduino-CAN`
 because the latter's `endPacket()` busy-waits on TXREQ until a frame is ACKed,
 which never returns on a bus with no other node.
+
+## Tests
+
+```sh
+pio test -e native      # 14 cases, runs on the host: no board, no car
+```
+
+**Always pass `-e native`.** A bare `pio test` is a trap: `default_envs` applies
+to `pio test` as well as `pio run`, so it resolves to the `mkr1000USB`
+environment, finds its only suite ignored there, and reports `0 test cases`
+with exit status 0 — a vacuous pass. And without that `test_ignore`, `pio test`
+instead tries to upload a Unity runner to the board and hangs waiting for
+results over serial, advising you to put the board in reset mode.
+
+What is tested is the pure decision logic in `src/diag_rules.h` — the stage 4
+ID-exclusion interlock and the UDS-reply recogniser. Those are the two rules
+with physical consequences, and neither needs hardware. Bit timing and bus
+behaviour are not unit-tested; they are verified by stages 1-3 on the board.
+
+If using [nvim-platformio.lua](https://github.com/anurag3301/nvim-platformio.lua),
+override the Test menu binding to `Piocmdf test -e native`, because its default
+is a bare `Piocmdf test`.
+
+### Editor / LSP
+
+```sh
+pio run -t compiledb    # regenerate compile_commands.json
+```
+
+Required after a fresh clone: the database is gitignored because it embeds
+absolute toolchain paths. Without it clangd falls back to a bare
+`clang file.cpp` with no include paths and reports `'Arduino.h' file not found`.
+Restart the language server afterwards (`:LspRestart` in Neovim).
+
+`.clangd` handles two clang-versus-GCC disagreements; see the comments in that
+file. The build itself is GCC (`arm-none-eabi-g++`) and is unaffected by any of
+it — when clangd and `pio run` disagree, `pio run` is authoritative.
