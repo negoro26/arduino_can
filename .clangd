@@ -5,6 +5,14 @@
 # GCC ARM machine flags (-mcpu=cortex-m0plus, -mthumb) directly, so they are
 # deliberately left alone -- stripping them makes clang fall back to armv4t and
 # produces far more errors than it fixes.
+CompileFlags:
+  # Resolved relative to this file, so the database is found no matter which
+  # directory the editor was opened from. Generate it with:
+  #   pio run -t compiledb
+  # Without it clangd falls back to a bare `clang file.cpp` with no -I paths,
+  # and the first symptom is "'Arduino.h' file not found".
+  CompilationDatabase: .
+
 Diagnostics:
   Suppress:
     # CMSIS device headers declare anonymous bit-fields carrying the
