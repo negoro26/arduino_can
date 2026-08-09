@@ -147,11 +147,50 @@ static bool loopbackAt(CAN_SPEED speed, const __FlashStringHelper *label) {
   return false;
 }
 
+// Bitrates the probe understands, shared by stages 2 and 3 so the two cannot
+// drift apart. 125 and 100 kbit matter because a Renault comfort/multimedia bus
+// may run there; without them "wrong bitrate" looks like "wrong pins".
+struct Candidate {
+  CAN_SPEED speed;
+  const __FlashStringHelper *label;
+};
+
+static const Candidate CANDIDATES[] = {
+    {CAN_500KBPS, F("500 kbit")},
+    {CAN_250KBPS, F("250 kbit")},
+    {CAN_125KBPS, F("125 kbit")},
+    {CAN_100KBPS, F("100 kbit")},
+};
+static const uint8_t CANDIDATE_COUNT =
+    sizeof(CANDIDATES) / sizeof(CANDIDATES[0]);
+
+// Passes if AT LEAST ONE bitrate round-trips a frame, because that is all this
+// stage claims to prove: SPI framing, TX load, RX readback and payload
+// fidelity. Requiring every bitrate would let one bad CNF table entry veto the
+// bus survey even though the rate the car actually uses works fine.
 static bool stageLoopback() {
   Serial.println(F("[2] Loopback self-test (raw arbitrary-ID frames)"));
-  bool ok500 = loopbackAt(CAN_500KBPS, F("500 kbit"));
-  bool ok250 = loopbackAt(CAN_250KBPS, F("250 kbit"));
-  return ok500 && ok250;
+
+  uint8_t passed = 0;
+  for (uint8_t i = 0; i < CANDIDATE_COUNT; i++) {
+    if (loopbackAt(CANDIDATES[i].speed, CANDIDATES[i].label)) {
+      passed++;
+    }
+  }
+
+  if (passed == 0) {
+    Serial.println(F("    FAIL: no bitrate round-tripped - controller unusable"));
+    return false;
+  }
+  if (passed < CANDIDATE_COUNT) {
+    Serial.print(F("    WARNING: only "));
+    Serial.print(passed);
+    Serial.print('/');
+    Serial.print(CANDIDATE_COUNT);
+    Serial.println(F(" bitrates usable; the frame path itself works, so"));
+    Serial.println(F("    continuing. Stage 3 will report any rate it cannot set."));
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------- stage 3
@@ -234,28 +273,14 @@ static void stageSniff() {
   g_seen.clear();
   g_busAlive = false;
 
-  // Four bitrates, not two: a Renault comfort/multimedia bus may run at 125 or
-  // 100 kbit. Sweeping all of them makes "wrong bitrate" far less likely to be
-  // mistaken for "wrong pins".
-  struct Candidate {
-    CAN_SPEED speed;
-    const __FlashStringHelper *label;
-  };
-  const Candidate candidates[] = {
-      {CAN_500KBPS, F("500 kbit")},
-      {CAN_250KBPS, F("250 kbit")},
-      {CAN_125KBPS, F("125 kbit")},
-      {CAN_100KBPS, F("100 kbit")},
-  };
-
   uint32_t totalErrors = 0;
-  for (uint8_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); i++) {
-    SniffResult r = sniff(candidates[i].speed, candidates[i].label, 2500);
+  for (uint8_t i = 0; i < CANDIDATE_COUNT; i++) {
+    SniffResult r = sniff(CANDIDATES[i].speed, CANDIDATES[i].label, 2500);
     totalErrors += r.errors + r.rec;
-    if (r.frames > 0 && !g_busAlive) {
+    if (r.frames > 0) {
       g_busAlive = true;
-      g_busSpeed = candidates[i].speed;
-      g_busSpeedLabel = candidates[i].label;
+      g_busSpeed = CANDIDATES[i].speed;
+      g_busSpeedLabel = CANDIDATES[i].label;
       break;  // decoding cleanly; no need to try slower rates
     }
   }

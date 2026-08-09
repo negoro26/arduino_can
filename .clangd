@@ -29,3 +29,16 @@ Diagnostics:
     # the file shows up undefined. Suppressing it is cosmetic: the real build
     # uses arm-none-eabi-g++ and is unaffected.
     - anon_bitfield_qualifiers
+
+---
+# Test files are NOT in compile_commands.json: `pio run -t compiledb` only
+# describes the firmware build, and these are host tests built by
+# `pio test -e native`. Without the two include paths below clangd cannot find
+# unity.h, every TEST_ASSERT_* becomes an unknown symbol, and the file is too
+# broken for completion or code actions to work at all.
+If:
+  PathMatch: test/.*
+CompileFlags:
+  Add:
+    - -I.pio/libdeps/native/Unity/src
+    - -Isrc

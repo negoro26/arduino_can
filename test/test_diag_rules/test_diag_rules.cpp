@@ -19,6 +19,11 @@ static void positive_response_to_start_session_is_a_reply(void) {
   TEST_ASSERT_TRUE(looksLikeDiagReply(8, f));
 }
 
+static void byte99_is_not_a_reply(void) {
+  const uint8_t f[8] = {0x03, 0x99, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00};
+  TEST_ASSERT_FALSE(looksLikeDiagReply(8, f));
+}
+
 static void negative_response_still_means_the_ecu_exists(void) {
   // 7F 10 12 = service 0x10 refused, sub-function not supported. The ECU is
   // present and must be reported, otherwise a refusing module looks absent.
@@ -46,9 +51,9 @@ static void a_request_echo_is_not_a_reply(void) {
 
 static void frames_too_short_to_carry_a_service_id_are_rejected(void) {
   const uint8_t f[2] = {0x03, 0x50};
-  TEST_ASSERT_FALSE(looksLikeDiagReply(1, f));  // dlc 1: no data[1]
+  TEST_ASSERT_FALSE(looksLikeDiagReply(1, f)); // dlc 1: no data[1]
   TEST_ASSERT_FALSE(looksLikeDiagReply(0, f));
-  TEST_ASSERT_TRUE(looksLikeDiagReply(2, f));  // dlc 2: boundary, accepted
+  TEST_ASSERT_TRUE(looksLikeDiagReply(2, f)); // dlc 2: boundary, accepted
 }
 
 static void null_payload_is_rejected(void) {
@@ -107,11 +112,11 @@ static void clear_resets_the_set(void) {
 
 static void overlap_counts_only_ids_in_the_diagnostic_range(void) {
   SeenIds<8> seen;
-  seen.add(0x1F6);  // operational
-  seen.add(0x6FF);  // just below the range
-  seen.add(0x700);  // in range
-  seen.add(0x765);  // in range
-  seen.add(0x800);  // above the range
+  seen.add(0x1F6); // operational
+  seen.add(0x6FF); // just below the range
+  seen.add(0x700); // in range
+  seen.add(0x765); // in range
+  seen.add(0x800); // above the range
   TEST_ASSERT_EQUAL_UINT8(2, seen.diagRangeOverlap());
 }
 
@@ -125,6 +130,7 @@ int main(int, char **) {
   UNITY_BEGIN();
 
   RUN_TEST(positive_response_to_start_session_is_a_reply);
+  RUN_TEST(byte99_is_not_a_reply);
   RUN_TEST(negative_response_still_means_the_ecu_exists);
   RUN_TEST(positive_response_to_read_data_is_a_reply);
   RUN_TEST(ordinary_vehicle_traffic_is_not_a_reply);
