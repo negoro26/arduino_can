@@ -27,6 +27,7 @@
 #include <SPI.h>
 #include <mcp2515.h>
 
+#include "console.h"
 #include "diag_rules.h"
 
 static const uint8_t PIN_CAN_CS = 3;
@@ -64,7 +65,7 @@ static void spiEnd() {
 // a library question.
 static uint8_t rawRegRead(uint8_t reg) {
   spiBegin();
-  SPI.transfer(0x03);  // READ
+  SPI.transfer(0x03); // READ
   SPI.transfer(reg);
   uint8_t v = SPI.transfer(0x00);
   spiEnd();
@@ -122,7 +123,7 @@ static bool loopbackAt(CAN_SPEED speed, const __FlashStringHelper *label) {
   }
 
   struct can_frame tx;
-  tx.can_id = 0x745;  // a real Renault diagnostic request id from ddt4all's db
+  tx.can_id = 0x745; // a real Renault diagnostic request id from ddt4all's db
   tx.can_dlc = 8;
   const uint8_t payload[8] = {0x02, 0x10, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00};
   memcpy(tx.data, payload, sizeof(payload));
@@ -179,7 +180,8 @@ static bool stageLoopback() {
   }
 
   if (passed == 0) {
-    Serial.println(F("    FAIL: no bitrate round-tripped - controller unusable"));
+    Serial.println(
+        F("    FAIL: no bitrate round-tripped - controller unusable"));
     return false;
   }
   if (passed < CANDIDATE_COUNT) {
@@ -188,7 +190,8 @@ static bool stageLoopback() {
     Serial.print('/');
     Serial.print(CANDIDATE_COUNT);
     Serial.println(F(" bitrates usable; the frame path itself works, so"));
-    Serial.println(F("    continuing. Stage 3 will report any rate it cannot set."));
+    Serial.println(
+        F("    continuing. Stage 3 will report any rate it cannot set."));
   }
   return true;
 }
@@ -201,9 +204,9 @@ static bool stageLoopback() {
 // disconnected or dead wires it sees nothing at all and stays clean.
 struct SniffResult {
   uint32_t frames;
-  uint32_t errors;  // ERRIF/MERRF events observed during the window
-  uint8_t rec;      // receive error counter
-  uint8_t eflg;     // error flag register
+  uint32_t errors; // ERRIF/MERRF events observed during the window
+  uint8_t rec;     // receive error counter
+  uint8_t eflg;    // error flag register
 };
 
 static SniffResult sniff(CAN_SPEED speed, const __FlashStringHelper *label,
@@ -214,7 +217,7 @@ static SniffResult sniff(CAN_SPEED speed, const __FlashStringHelper *label,
   Serial.print(label);
   Serial.print(F(": "));
 
-  mcp2515.reset();  // also zeroes TEC/REC
+  mcp2515.reset(); // also zeroes TEC/REC
   if (mcp2515.setBitrate(speed, MCP_16MHZ) != MCP2515::ERROR_OK ||
       mcp2515.setListenOnlyMode() != MCP2515::ERROR_OK) {
     Serial.println(F("setup failed"));
@@ -275,13 +278,13 @@ static void stageSniff() {
 
   uint32_t totalErrors = 0;
   for (uint8_t i = 0; i < CANDIDATE_COUNT; i++) {
-    SniffResult r = sniff(CANDIDATES[i].speed, CANDIDATES[i].label, 2500);
-    totalErrors += r.errors + r.rec;
-    if (r.frames > 0) {
+    SniffResult result = sniff(CANDIDATES[i].speed, CANDIDATES[i].label, 2500);
+    totalErrors += result.errors + result.rec;
+    if (result.frames > 0) {
       g_busAlive = true;
       g_busSpeed = CANDIDATES[i].speed;
       g_busSpeedLabel = CANDIDATES[i].label;
-      break;  // decoding cleanly; no need to try slower rates
+      break; // decoding cleanly; no need to try slower rates
     }
   }
 
@@ -293,12 +296,15 @@ static void stageSniff() {
     if (totalErrors > 0) {
       Serial.println(F("    WIRING: pins look CONNECTED to a live bus"));
       Serial.println(F("      -> bus activity seen but nothing decoded."));
-      Serial.println(F("      -> try swapping CAN-H and CAN-L, or the bus runs"));
+      Serial.println(
+          F("      -> try swapping CAN-H and CAN-L, or the bus runs"));
       Serial.println(F("         at a rate not tried here."));
     } else {
       Serial.println(F("    WIRING: pins look NOT CONNECTED"));
-      Serial.println(F("      -> zero frames AND zero errors at every bitrate."));
-      Serial.println(F("      -> wrong OBD pins, broken cable, or bus asleep."));
+      Serial.println(
+          F("      -> zero frames AND zero errors at every bitrate."));
+      Serial.println(
+          F("      -> wrong OBD pins, broken cable, or bus asleep."));
       Serial.println(F("      -> check ignition is in position II."));
     }
     Serial.println(F("    stage 4 will refuse to transmit"));
@@ -385,7 +391,7 @@ static void stageDiscover() {
     }
 
     tx.can_id = id;
-    mcp2515.sendMessage(&tx);  // one-shot; a missing ACK is expected, not fatal
+    mcp2515.sendMessage(&tx); // one-shot; a missing ACK is expected, not fatal
 
     struct can_frame rx;
     unsigned long deadline = millis() + 40;
@@ -394,7 +400,7 @@ static void stageDiscover() {
         continue;
       }
       if (rx.can_id == id || !looksLikeDiagReply(rx.can_dlc, rx.data)) {
-        continue;  // our own frame, or unrelated vehicle traffic
+        continue; // our own frame, or unrelated vehicle traffic
       }
       found++;
       Serial.print(F("    ECU: request 0x"));
@@ -447,19 +453,30 @@ void loop() {
   Serial.println();
   Serial.println(F("=== MKR1000 + MKR CAN shield bring-up ==="));
 
-  if (stageProbe() && stageLoopback()) {
-    stageSniff();
-    Serial.println(F("    (send 's' to arm stage 4: active ECU discovery)"));
-  } else {
-    Serial.println(F("    skipping bus survey: controller not usable"));
+  unsigned long idleUntil = millis() + 3000;
+  Serial.println(F("Send 'q' to arm stages 1, 2 and 3"));
+  while (millis() < idleUntil) {
+    if (Serial.available() && commandForKey(Serial.read()) == Command::RunSweep) {
+      while (Serial.available()) {
+        Serial.read(); // drain the rest of the line
+      }
+      if (stageProbe() && stageLoopback()) {
+        stageSniff();
+      } else {
+        Serial.println(F(" Stage 1 or 2 failed "));
+      }
+      Serial.println(F("    (send 's' to arm stage 4: active ECU discovery)"));
+      break;
+    }
   }
   Serial.println(F("=== end sweep ==="));
 
-  unsigned long idleUntil = millis() + 3000;
-  while (millis() < idleUntil) {
-    if (Serial.available() && (Serial.read() | 0x20) == 's') {
+  unsigned long idleUntil2 = millis() + 3000;
+  while (millis() < idleUntil2) {
+    if (Serial.available() &&
+        commandForKey(Serial.read()) == Command::RunDiscovery) {
       while (Serial.available()) {
-        Serial.read();  // drain the rest of the line
+        Serial.read(); // drain the rest of the line
       }
       Serial.println();
       stageDiscover();
