@@ -12,6 +12,14 @@ CompileFlags:
   # Without it clangd falls back to a bare `clang file.cpp` with no -I paths,
   # and the first symptom is "'Arduino.h' file not found".
   CompilationDatabase: .
+  Add:
+    # Suppress (below) hides a diagnostic from the editor but clang still
+    # COUNTS it against its default 20-error limit, then emits the fatal
+    # "too many errors emitted, stopping now" at line 1 -- which is itself not
+    # suppressible and was the only diagnostic left showing. Removing the limit
+    # stops the cascade. Costs nothing: the authoritative error count comes
+    # from `pio run`, which uses arm-none-eabi-g++ and reports zero.
+    - -ferror-limit=0
 
 Diagnostics:
   Suppress:
