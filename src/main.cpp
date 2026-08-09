@@ -38,10 +38,6 @@ static MCP2515 mcp2515(PIN_CAN_CS, 8000000, &SPI);
 
 static const uint8_t REG_CANSTAT = 0x0E;
 static const uint8_t REG_CANCTRL = 0x0F;
-static const uint8_t CANCTRL_OSM = 0x08;  // one-shot mode
-static const uint8_t REG_REC = 0x1D;      // receive error counter
-static const uint8_t REG_CANINTF = 0x2C;  // interrupt flags
-static const uint8_t REG_EFLG = 0x2D;     // error flags
 static const uint8_t CANINTF_ERRIF = 0x20;
 static const uint8_t CANINTF_MERRF = 0x80;
 
@@ -75,14 +71,10 @@ static uint8_t rawRegRead(uint8_t reg) {
   return v;
 }
 
-static void rawBitModify(uint8_t reg, uint8_t mask, uint8_t value) {
-  spiBegin();
-  SPI.transfer(0x05);  // BIT MODIFY
-  SPI.transfer(reg);
-  SPI.transfer(mask);
-  SPI.transfer(value);
-  spiEnd();
-}
+// No raw writes: every register this probe modifies is reachable through the
+// library (clearERRIF/clearMERR/setNormalOneShotMode). The read helper above
+// exists only so stage 1 can question the hardware without going through the
+// library it is about to depend on.
 
 static void printHex2(uint8_t v) {
   if (v < 0x10) {
@@ -195,10 +187,11 @@ static SniffResult sniff(CAN_SPEED speed, const __FlashStringHelper *label,
   struct can_frame rx;
   unsigned long deadline = millis() + windowMs;
   while (millis() < deadline) {
-    uint8_t intf = rawRegRead(REG_CANINTF);
+    const uint8_t intf = mcp2515.getInterrupts();
     if (intf & (CANINTF_ERRIF | CANINTF_MERRF)) {
       r.errors++;
-      rawBitModify(REG_CANINTF, CANINTF_ERRIF | CANINTF_MERRF, 0x00);
+      mcp2515.clearERRIF();
+      mcp2515.clearMERR();
     }
     if (mcp2515.readMessage(&rx) != MCP2515::ERROR_OK) {
       continue;
@@ -207,8 +200,8 @@ static SniffResult sniff(CAN_SPEED speed, const __FlashStringHelper *label,
     g_seen.add(rx.can_id);
   }
 
-  r.rec = rawRegRead(REG_REC);
-  r.eflg = rawRegRead(REG_EFLG);
+  r.rec = mcp2515.errorCountRX();
+  r.eflg = mcp2515.getErrorFlags();
 
   Serial.print(r.frames);
   Serial.print(F(" frames, err="));
@@ -321,14 +314,27 @@ static void stageDiscover() {
   }
 
   mcp2515.reset();
-  if (mcp2515.setBitrate(g_busSpeed, MCP_16MHZ) != MCP2515::ERROR_OK ||
-      mcp2515.setNormalMode() != MCP2515::ERROR_OK) {
+  if (mcp2515.setBitrate(g_busSpeed, MCP_16MHZ) != MCP2515::ERROR_OK) {
     Serial.println(F("    setup failed"));
     return;
   }
-  // One-shot: never retry a frame nobody ACKs, so a silent responder cannot
-  // wedge the TX buffers or leave us hammering the bus.
-  rawBitModify(REG_CANCTRL, CANCTRL_OSM, CANCTRL_OSM);
+  // One-shot mode: never retry a frame nobody ACKs, so a silent responder
+  // cannot wedge the TX buffers or leave us hammering the bus.
+  //
+  // The return value is deliberately ignored. setNormalOneShotMode() programs
+  // CANCTRL correctly -- setMode() writes with mask REQOP|OSM (0xE8) and value
+  // 0x08, giving REQOP=normal plus OSM=1 -- but then verifies by comparing
+  // CANSTAT & CANSTAT_OPMOD (0xE0) against that same 0x08. OPMOD can never
+  // carry the OSM bit, so the comparison is 0x00 == 0x08 and the call always
+  // reports ERROR_FAIL after spinning for 10 ms. The chip is configured; only
+  // the library's self-check is wrong. Verified against CANCTRL below.
+  mcp2515.setNormalOneShotMode();
+
+  const uint8_t canctrl = rawRegRead(REG_CANCTRL);
+  if ((canctrl & 0x08) == 0) {
+    Serial.println(F("    setup failed: one-shot mode not active"));
+    return;
+  }
 
   Serial.print(F("    sweeping 0x"));
   Serial.print(DIAG_ID_FIRST, HEX);
