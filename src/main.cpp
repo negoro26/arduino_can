@@ -27,6 +27,8 @@
 #include <SPI.h>
 #include <mcp2515.h>
 
+#include "diag_rules.h"
+
 static const uint8_t PIN_CAN_CS = 3;
 static const uint8_t PIN_CAN_INT = 7;
 
@@ -43,35 +45,12 @@ static const uint8_t REG_EFLG = 0x2D;     // error flags
 static const uint8_t CANINTF_ERRIF = 0x20;
 static const uint8_t CANINTF_MERRF = 0x80;
 
-// Diagnostic request IDs live in this range by convention; operational vehicle
-// traffic normally sits below it. The interlock below does not trust that
-// convention -- it excludes whatever this particular car is actually using.
-static const uint16_t DIAG_ID_FIRST = 0x700;
-static const uint16_t DIAG_ID_LAST = 0x7FF;
-
 // ------------------------------------------------- observed-bus state
 
-static const uint8_t MAX_SEEN = 64;
-static uint32_t g_seenIds[MAX_SEEN];
-static uint8_t g_seenCount = 0;
+static SeenIds<64> g_seen;
 static bool g_busAlive = false;
 static CAN_SPEED g_busSpeed = CAN_500KBPS;
 static const __FlashStringHelper *g_busSpeedLabel = nullptr;
-
-static bool wasSeen(uint32_t id) {
-  for (uint8_t i = 0; i < g_seenCount; i++) {
-    if (g_seenIds[i] == id) {
-      return true;
-    }
-  }
-  return false;
-}
-
-static void noteSeen(uint32_t id) {
-  if (!wasSeen(id) && g_seenCount < MAX_SEEN) {
-    g_seenIds[g_seenCount++] = id;
-  }
-}
 
 // ------------------------------------------------------------- raw SPI
 
@@ -211,7 +190,7 @@ static SniffResult sniff(CAN_SPEED speed, const __FlashStringHelper *label,
     return r;
   }
 
-  uint8_t before = g_seenCount;
+  uint8_t before = g_seen.count();
 
   struct can_frame rx;
   unsigned long deadline = millis() + windowMs;
@@ -225,7 +204,7 @@ static SniffResult sniff(CAN_SPEED speed, const __FlashStringHelper *label,
       continue;
     }
     r.frames++;
-    noteSeen(rx.can_id);
+    g_seen.add(rx.can_id);
   }
 
   r.rec = rawRegRead(REG_REC);
@@ -245,12 +224,12 @@ static SniffResult sniff(CAN_SPEED speed, const __FlashStringHelper *label,
   }
 
   Serial.print(F("  ids: "));
-  for (uint8_t i = before; i < g_seenCount; i++) {
+  for (uint8_t i = before; i < g_seen.count(); i++) {
     Serial.print(F("0x"));
-    Serial.print(g_seenIds[i], HEX);
+    Serial.print(g_seen.at(i), HEX);
     Serial.print(' ');
   }
-  if (g_seenCount == MAX_SEEN) {
+  if (g_seen.isFull()) {
     Serial.print(F("(list full)"));
   }
   Serial.println();
@@ -259,7 +238,7 @@ static SniffResult sniff(CAN_SPEED speed, const __FlashStringHelper *label,
 
 static void stageSniff() {
   Serial.println(F("[3] Listen-only bus survey (cannot disturb the vehicle)"));
-  g_seenCount = 0;
+  g_seen.clear();
   g_busAlive = false;
 
   // Four bitrates, not two: a Renault comfort/multimedia bus may run at 125 or
@@ -310,16 +289,11 @@ static void stageSniff() {
 
   // Report any operational traffic that overlaps the diagnostic ID range. Those
   // IDs get excluded from the active sweep.
-  uint8_t overlap = 0;
-  for (uint8_t i = 0; i < g_seenCount; i++) {
-    if (g_seenIds[i] >= DIAG_ID_FIRST && g_seenIds[i] <= DIAG_ID_LAST) {
-      overlap++;
-    }
-  }
+  const uint8_t overlap = g_seen.diagRangeOverlap();
   Serial.print(F("    WIRING: OK - bus decoding cleanly at "));
   Serial.println(g_busSpeedLabel);
   Serial.print(F("    "));
-  Serial.print(g_seenCount);
+  Serial.print(g_seen.count());
   Serial.print(F(" distinct ids, "));
   Serial.print(overlap);
   Serial.println(F(" of them inside 0x700-0x7FF (will be skipped)"));
@@ -331,18 +305,8 @@ static void stageSniff() {
 // StartDiagnosticSession (0x10 0xC0). Service 0x10 opens a session and writes
 // nothing; it is in ddt4all's own safe_commands whitelist.
 //
-// A responder is recognised by UDS reply structure, not by ID, so ordinary
-// vehicle traffic is never mistaken for an answer:
-//   data[1] == 0x50  positive response to 0x10
-//   data[1] == 0x7F  negative response (ECU is present but refused)
-//   data[1] == 0x61  positive response to 0x21 (ddt4all's scanner uses this)
-static bool looksLikeDiagReply(const struct can_frame &f) {
-  if (f.can_dlc < 2) {
-    return false;
-  }
-  uint8_t sid = f.data[1];
-  return sid == 0x50 || sid == 0x7F || sid == 0x61;
-}
+// Responders are recognised by looksLikeDiagReply() in diag_rules.h, which is
+// unit-tested on the host.
 
 static void stageDiscover() {
   Serial.println(F("[4] ACTIVE ECU discovery - this TRANSMITS on the bus"));
@@ -384,7 +348,7 @@ static void stageDiscover() {
     // INTERLOCK 2: if a real module is already broadcasting on this ID, do not
     // transmit on it. This is what prevents us injecting bytes that another
     // module would read as operational signal data.
-    if (wasSeen(id)) {
+    if (g_seen.contains(id)) {
       skipped++;
       continue;
     }
@@ -398,7 +362,7 @@ static void stageDiscover() {
       if (mcp2515.readMessage(&rx) != MCP2515::ERROR_OK) {
         continue;
       }
-      if (rx.can_id == id || !looksLikeDiagReply(rx)) {
+      if (rx.can_id == id || !looksLikeDiagReply(rx.can_dlc, rx.data)) {
         continue;  // our own frame, or unrelated vehicle traffic
       }
       found++;
