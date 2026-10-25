@@ -6,10 +6,11 @@
 """Database-free Renault/Dacia + generic OBD-II scanner for ELM327-compatible adapters.
 
 Reads identification and DTCs from every Renault/Dacia diagnostic address and from
-generic OBD-II over any ELM327-compatible serial adapter (the arduino_can firmware
-or a real ELM327), without the proprietary DDT2000/CLIP databases.
+generic OBD-II over any ELM327-compatible serial or WiFi adapter (the arduino_can
+firmware or a real ELM327), without the proprietary DDT2000/CLIP databases.
 
     uv run tools/canscan.py /dev/ttyACM0
+    uv run tools/canscan.py socket://192.168.0.10:35000    # WiFi adapter (TCP)
     uv run --with obd tools/canscan.py /dev/ttyACM0    # adds generic DTC descriptions
 """
 from __future__ import annotations
@@ -444,9 +445,9 @@ class AdapterTimeout(Exception):
 
 
 class Elm:
-    """The serial adapter: one command at a time, each answered up to the `>` prompt."""
+    """The adapter, serial or TCP: one command at a time, each answered up to the `>` prompt."""
 
-    def __init__(self, port: serial.Serial, verbose: bool = False):
+    def __init__(self, port: serial.SerialBase, verbose: bool = False):
         self.port = port
         self.verbose = verbose
         self.statuses: Counter[str] = Counter()
@@ -819,7 +820,9 @@ def parse_args(argv: Optional[list[str]]) -> argparse.Namespace:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="exit status: 0 scan completed (with or without DTCs), 2 adapter does not answer, "
                "3 bus looks dead (no frames heard and no ECU answered)")
-    parser.add_argument("port", metavar="PORT", help="adapter serial port, e.g. /dev/ttyACM0 or /dev/ttyUSB0")
+    parser.add_argument("port", metavar="PORT",
+                        help="adapter serial port, e.g. /dev/ttyACM0 or /dev/ttyUSB0, or a WiFi adapter "
+                             "as socket://HOST:PORT, e.g. socket://192.168.0.10:35000")
     parser.add_argument("--json", metavar="FILE", help="also write the report as JSON to FILE")
     parser.add_argument("--clear", action="store_true",
                         help="after the report, clear the DTCs found (asks you to type CLEAR)")
