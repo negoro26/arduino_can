@@ -361,6 +361,22 @@ static void survey_on_a_silent_bus_reports_not_connected(void) {
       ask(hal, elm, "AT#SURVEY").c_str());
 }
 
+static void survey_with_an_unconfigurable_controller_reports_unknown(void) {
+  TestHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  run(hal, elm, "ATE0");
+  hal.setCanOpenFails(true);
+  const std::string out = ask(hal, elm, "AT#SURVEY");
+  TEST_ASSERT_EQUAL_STRING(
+      "500 kbit: SETUP FAILED\r250 kbit: SETUP FAILED\r"
+      "125 kbit: SETUP FAILED\r100 kbit: SETUP FAILED\r"
+      "WIRING: UNKNOWN, the CAN controller could not be configured "
+      "(run AT#SELFTEST)\r\r>",
+      out.c_str());
+  TEST_ASSERT_TRUE(out.find("NOT CONNECTED") == std::string::npos);
+}
+
 static void selftest_round_trips_a_frame_at_every_rate(void) {
   TestHal hal(renaultDaciaCar());
   Elm elm(hal);
@@ -397,6 +413,7 @@ int main(int, char **) {
   RUN_TEST(ten_frame_burst_with_slow_output_loses_nothing);
   RUN_TEST(survey_finds_the_bitrate_and_lists_ids);
   RUN_TEST(survey_on_a_silent_bus_reports_not_connected);
+  RUN_TEST(survey_with_an_unconfigurable_controller_reports_unknown);
   RUN_TEST(selftest_round_trips_a_frame_at_every_rate);
   return UNITY_END();
 }

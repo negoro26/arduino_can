@@ -198,6 +198,7 @@ void Elm::monitor() {
 void Elm::survey() {
   link_.close(hal_);
   uint32_t totalErrors = 0;
+  bool configured = false;
   bool found = false;
   Bitrate foundRate = Bitrate::k500;
   for (Bitrate rate : kSurveyRates) {
@@ -207,9 +208,13 @@ void Elm::survey() {
       return;
     }
     Line line;
-    line.number(bitrateKbit(rate))
-        .text(" kbit: ")
-        .number(report.frames)
+    line.number(bitrateKbit(rate)).text(" kbit: ");
+    if (report.setupFailed) {
+      print(line.text("SETUP FAILED").str());
+      continue;
+    }
+    configured = true;
+    line.number(report.frames)
         .text(" frames, errors ")
         .number(report.errors);
     if (report.ids.count() > 0) {
@@ -226,6 +231,11 @@ void Elm::survey() {
       foundRate = rate;
       break;
     }
+  }
+  if (!configured) {
+    print("WIRING: UNKNOWN, the CAN controller could not be configured "
+          "(run AT#SELFTEST)");
+    return;
   }
   switch (wiringVerdict(found ? 1 : 0, totalErrors)) {
     case Wiring::BitrateFound: {

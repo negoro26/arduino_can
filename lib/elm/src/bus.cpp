@@ -245,7 +245,11 @@ bool surveyRate(BusSide &bus, Bitrate rate, uint16_t windowMs,
                 RateReport *out) {
   *out = RateReport{};
   bus.canClose();
-  if (!bus.canOpen(rate, CanMode::ListenOnly, Acceptance::all())) return true;
+  if (!bus.canOpen(rate, CanMode::ListenOnly, Acceptance::all())) {
+    out->setupFailed = true;
+    bus.canClose();
+    return true;
+  }
   const Deadline d = Deadline::after(bus.nowMs(), windowMs);
   CanFrame rx;
   bool interrupted = false;

@@ -140,6 +140,7 @@ class SeenIds {
 };
 
 struct RateReport {
+  bool setupFailed = false;  // canOpen refused the rate; nothing was heard
   uint32_t frames = 0;
   uint32_t errors = 0;  // errorEvents + rec, as the probe's stage 3 counted
   SeenIds<16> ids;

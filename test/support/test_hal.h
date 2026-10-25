@@ -50,6 +50,12 @@ class TestHal final : public SimCanHal {
   uint32_t now() const { return nowUs_; }
   // Lets virtual time pass with nobody polling the controller.
   void sleepMs(uint32_t ms) { nowUs_ += ms * 1000; }
+  // Makes every canOpen() fail, like a controller that will not configure.
+  void setCanOpenFails(bool fails) { canOpenFails_ = fails; }
+
+  bool canOpen(Bitrate rate, CanMode mode, const Acceptance &acc) override {
+    return !canOpenFails_ && SimCanHal::canOpen(rate, mode, acc);
+  }
 
   TxStatus canSend(const ClearedFrame &f) override {
     if (f.valid()) wire_.push_back({nowUs_, f.frame()});
@@ -106,6 +112,7 @@ class TestHal final : public SimCanHal {
   uint32_t clockReads_ = 0;
   uint32_t stalls_ = 0;
   uint16_t writeCostUs_ = 0;
+  bool canOpenFails_ = false;
   std::vector<std::pair<uint32_t, char>> input_;
   std::string output_;
   std::vector<std::pair<uint32_t, CanFrame>> wire_;
