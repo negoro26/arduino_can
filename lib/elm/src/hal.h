@@ -16,9 +16,14 @@
 #include "can_types.h"
 #include "guard.h"
 
+// readByte() result once the session's link has gone (the TCP client closed or
+// left the access point). Whatever is running stops: an ATMA started from a
+// phone would otherwise stream into nothing, and hold the session, forever.
+constexpr int kLinkClosed = -2;
+
 class BusSide {
  public:
-  // Next received byte, or -1 if none is buffered. Never blocks.
+  // Next received byte, -1 if none is buffered, or kLinkClosed. Never blocks.
   virtual int readByte() = 0;
 
   virtual uint32_t nowMs() = 0;
