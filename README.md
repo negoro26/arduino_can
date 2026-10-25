@@ -1,86 +1,52 @@
-# MKR1000 CAN bring-up probe
+# MKR1000 ELM327 adapter for Renault and Dacia
 
-Diagnostic firmware for an **Arduino MKR1000 + Arduino MKR CAN shield (ASX00005)**,
-written to answer one question about a **Renault Megane II (2006-2008)**:
+Firmware that turns an **Arduino MKR1000 + Arduino MKR CAN shield (ASX00005)** into an ELM327 v1.5-compatible diagnostic adapter on USB. It speaks the CAN protocols only (ISO 15765-4, 11-bit and 29-bit, 500 and 250 kbit). Diagnostic programs that drive an ELM327 use it unchanged: [ddt4all](https://github.com/cedricp/ddt4all), [pyren](https://gitlab.com/py_ren/pyren), [python-OBD](https://github.com/brendan-w/python-OBD), and generic OBD-II apps.
 
-> Which of this car's ECUs can be reached over CAN, and which are K-line only?
+The repo also has `tools/canscan.py`, a scanner that reads identification and fault codes from every Renault/Dacia module without the proprietary databases that ddt4all and pyren need.
 
-That answer decides whether a DIY ELM327-to-CAN bridge can drive
-[ddt4all](https://github.com/cedricp/ddt4all) against this car at all. An MCP2515
-can never reach a K-line module, no matter what the firmware does.
+By default the adapter refuses to send anything that writes to an ECU. See [Write guard](#write-guard).
 
-## Status
+## Which cars work
 
-The firmware here is the **diagnostic probe**, not the ELM327 emulator. The
-emulator has not been written yet; it is waiting on the measurement this probe
-produces.
+The MCP2515 on the shield talks CAN only. It can never reach a module that is diagnosed over K-line (OBD pin 7).
 
-## Hardware facts
+| Car | Diagnostics | Result |
+|---|---|---|
+| Dacia Sandero II (2012-2020), 1.2 16V | every module on CAN except the SVT tracker ([RenCOM list](https://www.obdtester.com/rencom-eculist/dacia/sandero_ii_[2012_2020])) | engine, ABS, airbag, UCH, cluster, EPS, climate are reachable |
+| Renault Megane II (2002-2008), 1.5 dCi | most modules on CAN; parking assist, some headlamp-levelling units, the LPG unit and one automatic gearbox on K-line ([RenCOM list](https://www.obdtester.com/rencom-eculist/renault/megane_ii_[2002_2008])) | the CAN modules are reachable |
+| Skoda Fabia II (5J) 2008 | K-line until 12/2010 ([blafusel](https://www.blafusel.de/obd/vag_compatibility.html)) | does not work |
+| VW Golf IV (1J) | K-line | does not work |
 
-Verified on the bench, or read from the official
-[ASX00005 schematic](https://docs.arduino.cc/resources/schematics/ASX00005-schematics.pdf):
+Nothing in this README has been tried on a car yet. The firmware passes the client checks against a simulated Sandero and against the same simulated car running on the real board (see [Develop and test](#develop-and-test)).
+
+## Hardware
+
+Verified on the bench, or read from the official [ASX00005 schematic](https://docs.arduino.cc/resources/schematics/ASX00005-schematics.pdf):
 
 | Item | Value | How known |
 |---|---|---|
 | CAN controller | MCP2515 | probed over SPI, `CANSTAT=0x80` / `CANCTRL=0x87` |
 | Chip select | **D3** (fixed by the shield PCB) | schematic + confirmed working |
-| Interrupt | D7 | schematic |
+| Interrupt | D7 (not used: the firmware polls over SPI) | schematic |
 | Crystal | 16 MHz | schematic (`Y1`, OSC1/OSC2 column) |
 | Transceiver | TJA1049T/3, `STB` tied low via `R8 = 0R` | schematic |
 | Termination | onboard **120R** (`R3`), no jumper found | schematic |
 | Transceiver power | header `5V` -> net `+5V` -> `VDD` | schematic |
 
-Because the transceiver is fed from the header `5V` pin, **USB power alone is
-enough — the 12 V screw terminal is optional.**
+The transceiver is fed from the header `5V` pin, so USB power alone is enough. The 12 V screw terminal is optional.
 
-Note the onboard 120R: a vehicle bus is already terminated at both ends, so this
-adds a third terminator in parallel. Usually fine for a short session; suspect it
-first if frames arrive but erratically.
+The onboard 120R adds a third terminator in parallel with the car's two. That is usually fine for a short session. Suspect it first if frames arrive but erratically.
 
-## Safety model
+## Wire it to the car
 
-| Stage | Transmits? | Notes |
-|---|---|---|
-| 1 - MCP2515 presence | no | raw SPI register probe |
-| 2 - loopback self-test | no | never reaches the wire |
-| 3 - listen-only survey | **no** | MCP2515 listen-only sends no ACKs and no error frames |
-| 4 - active ECU discovery | **YES** | armed by hand, plus two interlocks |
-
-Stages 1-3 run automatically and cannot disturb a vehicle bus.
-
-Stage 4 sends exactly one payload, and nothing else exists in the firmware:
-
-```c
-{0x02, 0x10, 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00}   // ISO-TP SF: UDS StartDiagnosticSession
-```
-
-Service `0x10` opens a diagnostic session and writes nothing. It is in ddt4all's
-own `safe_commands` whitelist. Absent by design: `2E`/`3B`/`3D` (write),
-`34`/`36` (flash), `31` (routine control), `11` (ECU reset), `27` (security
-access), `14`/`04` (clear DTC). A session also self-expires without a `3E`
-keepalive, which this firmware never sends.
-
-### Stage 4 interlocks
-
-1. **Refuses to transmit unless stage 3 saw real traffic.** This proves the
-   bitrate passively before anything is transmitted. A wrong bit rate would
-   otherwise flood the bus with error frames.
-2. **Skips every CAN ID that stage 3 observed.** It cannot collide with a
-   module's operational messages, because the exclusion list is measured from
-   this car rather than assumed from convention.
-
-## Wiring
-
-The shield side is **two 2-position screw terminals**, per the ASX00005
-schematic — there is no DB9 on the Arduino shield:
+The shield has two 2-position screw terminals and no DB9:
 
 | Terminal | Rating | Signals |
 |---|---|---|
 | `X3` | 2 A | CAN-H, CAN-L (next to the 120R terminator `R3`) |
 | `X2` | 3 A | VIN, GND |
 
-Car side, OBD2 (SAE J1962). The pinout is fixed by the connector, not by the
-manufacturer, so an untrustworthy aftermarket cable can be checked against this:
+The OBD2 connector pinout (SAE J1962) is fixed by the standard, so check an untrustworthy aftermarket cable against it:
 
 | OBD2 pin | Signal | Where it goes |
 |---|---|---|
@@ -88,135 +54,160 @@ manufacturer, so an untrustworthy aftermarket cable can be checked against this:
 | 14 | CAN-L | `X3` |
 | 4 or 5 | GND | `X2` GND (leave VIN empty) |
 
-Do **not** connect pin 16 (+12 V). It is not needed — the transceiver is fed
-from the header `5V` pin, so USB alone powers everything.
+Do **not** connect pin 16 (+12 V). The board runs from USB.
 
-### Can a miswire damage anything?
+### What a miswire can damage
 
-**CAN-H / CAN-L: no.** Per the NXP TJA1049 datasheet, `VCANH` and `VCANL` have
-an absolute maximum of **-58 V to +58 V**, and the receiver's *operating*
-common-mode range is **-12 V to +12 V**. Battery voltage on either bus pin is
-within normal operating range, not merely survivable; these pins are designed
-for a bus shorted to battery. ESD rating is +-8 kV. The MCP2515 is never
-exposed, because the transceiver sits between it and the wires.
+CAN-H and CAN-L cannot be damaged by a miswire. The NXP TJA1049 datasheet gives `VCANH` and `VCANL` an absolute maximum of -58 V to +58 V and an operating common-mode range of -12 V to +12 V, so battery voltage on a bus pin is within normal operation. ESD rating is +-8 kV. The MCP2515 sits behind the transceiver and never sees the wires.
 
-**GND: yes.** The one genuinely damaging miswire is +12 V landing on a ground
-line, which shorts the battery through the USB cable. That is the connection
-worth double-checking.
+GND can. If +12 V lands on the ground line, the battery shorts through the USB cable. Check that connection twice.
 
-### Telling a wiring fault from a wrong bitrate
+## Flash the firmware
 
-Stage 3 sweeps 500 / 250 / 125 / 100 kbit in listen-only mode and reports frame
-count alongside the MCP2515 error counters (`REC`, `EFLG`, and `ERRIF`/`MERRF`
-events). That combination is the diagnosis:
+```sh
+pio run -t upload            # the adapter (env mkr1000USB)
+```
+
+PlatformIO may not be on `PATH`: it lives at `~/.platformio/penv/bin/pio` (IDE install) or `~/.local/bin/pio` (`uv tool install platformio`). Serial devices are `root:uucp 0660`, so your user must be in the `uucp` group (`sudo usermod -aG uucp $USER`, then log out and back in, or run the command inside `newgrp uucp`).
+
+The board appears as `/dev/ttyACM0` on Linux and as "USB Serial Device (COMx)" on Windows 10/11. The baud rate does not matter on native USB.
+
+## Check the wiring first
+
+Ignition to position II, engine off. Open a terminal (`./monitor.sh`, or Tera Term or PuTTY on Windows), send `ATL1` so lines do not overwrite each other, then send `AT#SURVEY`. The survey listens at 500, 250, 125 and 100 kbit and transmits nothing:
 
 | Frames | Errors | Verdict |
 |---|---|---|
-| > 0 | any | **pins correct**, bitrate found |
-| 0 | **> 0** | **pins connected to a live bus** but nothing decodes — swap CAN-H/CAN-L, or the bus runs at an untried rate |
-| 0 | 0 | **not connected** — wrong OBD pins, broken cable, or bus asleep |
+| > 0 | any | pins correct, bitrate found |
+| 0 | > 0 | pins on a live bus but nothing decodes: swap CAN-H and CAN-L, or the bus runs at an untried rate |
+| 0 | 0 | not connected: wrong OBD pins, broken cable, or bus asleep |
 
-The middle row is the useful one: a controller that cannot decode a live
-differential bus still accumulates receive errors, whereas disconnected wires
-produce nothing at all. All of this is listen-only, so retrying any wiring
-permutation is free and cannot disturb the vehicle.
+If a rate prints `SETUP FAILED`, the fault is the board, not the car. Run `AT#SELFTEST`.
 
-## Reading the output
+## Read fault codes without a database
 
-Nothing needs to be installed on the laptop: the firmware is already in flash,
-so the laptop is only a screen. The MKR1000 is native USB CDC and appears as
-**"USB Serial Device (COMx)"** on Windows 10/11 with the built-in driver.
-
-**115200 baud, 8-N-1, no flow control.** DTR/RTS state is irrelevant (measured).
-
-### Windows
-
-[Tera Term](https://teratermproject.github.io/index-en.html) lists serial ports in its opening dialog:
-
-1. Open Tera Term -> **Serial** -> pick the COM port -> OK
-2. **Setup -> Serial port** -> Speed `115200` -> New setting
-3. **File -> Log...** -> filename, tick **Plain text** -> Save
-
-PuTTY works too: Connection type Serial, Speed 115200, logging under
-Session -> Logging -> "All session output".
-
-### Linux
+ddt4all cannot scan or read codes until the DDT2000 `ecus` database is installed, and pyren exits without the CLIP database. Both are Renault-proprietary and not part of this repo. `tools/canscan.py` works without either:
 
 ```sh
-./monitor.sh          # wraps `pio device monitor`, logs to ./logs/
+uv run tools/canscan.py /dev/ttyACM0                  # Windows: COM5
+uv run --with obd tools/canscan.py /dev/ttyACM0       # adds descriptions for generic OBD-II codes
+uv run tools/canscan.py /dev/ttyACM0 --json report.json
 ```
 
-Output repeats every ~3 seconds. Opening a port does not reset a native-USB
-board, so a one-shot report at boot would be missed — the sweep loops instead.
+The scan runs in three steps:
 
-## Running it on the car
+1. It listens for 1.5 s (`ATMA`) and records every CAN id in use. It never transmits on a request id that the car already uses for normal traffic.
+2. It reads generic OBD-II on 7DF: MIL, VIN, and stored, pending and permanent codes.
+3. It probes the 114 Renault/Dacia request ids from ddt4all's address table. Each module gets a UDS probe (`10 03`) and then a KWP2000 probe (`10 C0`). Each module that answers is identified (`22 F1 xx` or `21 80`) and its codes are read (`19 02 AF` or `17 FF 00`).
 
-Laptop on battery, charger unplugged. Ignition to position II, engine off
-(modules sleep otherwise).
-
-Watch stage 3. A live bus looks like:
+This is the output against the simulated Sandero, shortened:
 
 ```
-[3] Listen-only bus survey (cannot disturb the vehicle)
-    500 kbit: 1247 frames, ids: 0x1F6 0x181 0x5DE 0x354 ...
-    bus alive at 500 kbit; 14 distinct ids, 0 of them inside 0x700-0x7FF (will be skipped)
+OBD-II (7DF):
+  7E8 engine: MIL on, 2 stored DTCs (0101), VIN UU15SDAG551234567
+    stored     P0335
+    stored     P0115
+Renault/Dacia modules:
+  UCH                                      745->765  KWP
+      supplier: 213
+      DTC 9323 status 0xE0 (B1323 if SAE)
+  ECM                                      7E0->7E8  UDS
+      supplier: CONTINENTAL
+      P0335-1C  DTC 03351C status 0x2F active, stored, pending
+  not probed, request id seen as live traffic: 622->484 Steering Column
+4 modules answered, 6 DTCs
 ```
 
-Only then press `s` to arm stage 4. Each responder is reported as:
+Renault names its codes ("DF001") in the databases, so the scanner shows the raw code plus its SAE reading. A full scan takes about 40 s.
 
-```
-ECU: request 0x745 -> response 0x765  [03 50 C0 00 ...]  (session opened)
-```
+To clear codes, add `--clear`. After the report the scanner lists what it will clear and waits until you type `CLEAR`. It raises the guard to `CLEAR`, sends `14 FF FF FF` (UDS), `14 FF 00` (KWP) and OBD mode `04`, drops the guard back to `READ`, and reads the codes again.
 
-A `7F` negative response still counts — a refusing ECU is a present ECU.
+## Use ddt4all, pyren or python-OBD
 
-## Build
+- **ddt4all.** Pick adapter type **USB**, leave **Change UART speed** at **No**, and type the port (`/dev/ttyACM0` or `COMx`). ddt4all needs the DDT2000 `ecus` folder for scanning and fault codes.
+- **pyren.** Run `pyren3.py -p /dev/ttyACM0`. pyren needs the CLIP database.
+- **python-OBD.** Pass the port explicitly, `obd.OBD("/dev/ttyACM0")`. Its auto-scan on Linux looks only at `ttyUSB` and `rfcomm` devices.
+
+The firmware answers `?` to `AT BRD` (USB has no baud rate). That is why ddt4all's UART speed must stay at **No**.
+
+## Write guard
+
+Every frame the adapter transmits is classified by its diagnostic service before it reaches the bus. A frame above the current tier is not sent, and the adapter prints `BLOCKED` (ddt4all and pyren show that as an empty answer).
+
+| Tier | Allows |
+|---|---|
+| `READ` (default) | OBD-II modes 01, 02, 03, 05, 06, 07, 09, 0A; services 10 (except programming sessions 02, 82, 85), 12, 17, 18, 19, 1A, 20, 21, 22, 23, 24, 3E, 81, 82, 83; flow-control frames |
+| `CLEAR` | `READ` plus 14 (clear DTCs) and OBD-II mode 04 |
+| `WRITE` | everything, including 2E, 3B, 2F, 30, 31, 27, 11, 28, 85 and 34-37 |
+
+- `AT#GUARD` prints the tier. `AT#GUARD READ`, `AT#GUARD CLEAR` and `AT#GUARD WRITE` set it.
+- The tier lives in RAM. ATZ, ATWS and ATD do not touch it. Unplugging the board resets it to `READ`.
+- To clear codes from ddt4all, open a terminal first, send `AT#GUARD CLEAR`, close the terminal, then connect ddt4all.
+- In raw mode (`ATCAF0`, which ddt4all and pyren use), the guard reads the service from the ISO-TP frame itself. A consecutive frame gets the verdict of the first frame before it.
+
+## How the adapter behaves on the bus
+
+- Between requests the MCP2515 is in listen-only mode. It does not ACK frames and cannot send error frames.
+- Before the first transmission at a bitrate, it listens for 60 ms. If it sees errors but no frames, the bitrate is wrong. It then prints `CAN ERROR` and sends nothing.
+- Every transmission is one-shot. A frame that hits a bus error is never retried by the chip. On this board, measured with nothing connected: in one-shot mode the attempt ended after 93 us, while without one-shot the chip retried for the full 20 ms test window.
+- Only lost arbitration is retried, at most 3 times. Another node won the bus, so nothing was corrupted.
+
+## Commands
+
+The firmware implements the ELM327 AT commands that ddt4all, pyren and python-OBD send, plus the K-line parameter commands that their adapter checkers test (they answer `OK` and do nothing). Three commands are specific to this adapter:
+
+| Command | Does |
+|---|---|
+| `AT#GUARD [READ\|CLEAR\|WRITE]` | prints or sets the write-guard tier |
+| `AT#SURVEY` | listen-only wiring check at 500, 250, 125 and 100 kbit |
+| `AT#SELFTEST` | MCP2515 presence check, then a loopback frame at each bitrate |
+
+Differences from a real ELM327:
+
+- Protocols 1-5 (K-line, J1850) can be selected, but requests answer `UNABLE TO CONNECT`. `ATSI` and `ATFI` answer `BUS INIT: ...ERROR`.
+- `ATRV` always answers `12.0V`. Pin 16 is not wired, so nothing is measured. python-OBD refuses to connect below 6 V.
+- `AT BRD` and `STI` answer `?`.
+- A bare CR repeats only the last CAN request, not an AT command.
+- `ATMA` keeps monitoring when the chip drops a frame, instead of stopping with `BUFFER FULL`.
+- After the last frame of an answer the adapter waits 50 ms (`AT AT1`, default) or 25 ms (`AT AT2`) for more, capped by `AT ST`. While consecutive frames are still owed after its own flow control, it waits the full `AT ST`.
+- One answer can hold at most 600 frames, which covers a 4095-byte ISO-TP message. Above that the adapter prints `BUFFER FULL`.
+- `ATCS` prints `T:xx R:xx` without the frequency field.
+
+## Develop and test
+
+| Environment | Builds |
+|---|---|
+| `mkr1000USB` (default) | the adapter |
+| `mkr1000USB_demo` | the adapter plus a virtual Renault/Dacia car that answers through the MCP2515 in loopback mode. Use it to try the PC tools at a desk. |
+| `native` | the host test suites |
+| `sim` | a PTY simulator of the same virtual car for real PC clients |
+
+Code layout:
+
+- `lib/elm` is the portable ELM327 core. It has no Arduino dependency, no heap and no STL.
+- `lib/vecu` holds the virtual car: ISO-TP ECUs and a simulated bus that models the MCP2515's two receive buffers.
+- `src/firmware` holds the MCP2515 adapter, and `src/sim` holds the PTY host.
 
 ```sh
-pio run -t upload
+pio test -e native                                         # 88 cases, no board, no car
+pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim
+uv run tools/compat/check_clients.py --sim .pio/build/sim/program
+uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo
+uv run --with pytest --with pyserial pytest tools          # scanner decoders
 ```
 
-PlatformIO installs its own venv and does not add itself to `PATH`; it lives at
-`~/.platformio/penv/bin/pio`. Serial devices are `root:uucp 0660`, so the user
-must be in the `uucp` group (`sudo usermod -aG uucp $USER`, then re-login).
+`tools/compat/check_clients.py` runs the real client code (ddt4all and pyren at pinned commits, python-OBD 0.7.3, and `canscan.py`) against the simulator or the demo board. It passes 80 of 80 checks on both.
 
-Library: `autowp/autowp-mcp2515` — chosen over `sandeepmistry/arduino-CAN`
-because the latter's `endPacket()` busy-waits on TXREQ until a frame is ACKed,
-which never returns on a bus with no other node.
+**Always pass `-e native` to `pio test`.** `default_envs` applies to `pio test` too. A bare `pio test` resolves to `mkr1000USB`, finds every suite ignored there, and reports `0 test cases` with exit status 0. Without that `test_ignore`, `pio test` would instead upload a Unity runner to the board and hang waiting for results.
 
-## Tests
+Library: `autowp/autowp-mcp2515`, chosen over `sandeepmistry/arduino-CAN` because the latter's `endPacket()` busy-waits on TXREQ until a frame is ACKed, which never returns on a bus with no other node. The firmware still writes CANCTRL itself for one-shot mode, because the library's `setNormalOneShotMode()` always reports failure (its self-check compares a bit that CANSTAT never carries).
 
-```sh
-pio test -e native      # 14 cases, runs on the host: no board, no car
-```
-
-**Always pass `-e native`.** A bare `pio test` is a trap: `default_envs` applies
-to `pio test` as well as `pio run`, so it resolves to the `mkr1000USB`
-environment, finds its only suite ignored there, and reports `0 test cases`
-with exit status 0 — a vacuous pass. And without that `test_ignore`, `pio test`
-instead tries to upload a Unity runner to the board and hangs waiting for
-results over serial, advising you to put the board in reset mode.
-
-What is tested is the pure decision logic in `src/diag_rules.h` — the stage 4
-ID-exclusion interlock and the UDS-reply recogniser. Those are the two rules
-with physical consequences, and neither needs hardware. Bit timing and bus
-behaviour are not unit-tested; they are verified by stages 1-3 on the board.
-
-If using [nvim-platformio.lua](https://github.com/anurag3301/nvim-platformio.lua),
-override the Test menu binding to `Piocmdf test -e native`, because its default
-is a bare `Piocmdf test`.
-
-### Editor / LSP
+### Editor and LSP
 
 ```sh
 pio run -t compiledb    # regenerate compile_commands.json
 ```
 
-Required after a fresh clone: the database is gitignored because it embeds
-absolute toolchain paths. Without it clangd falls back to a bare
-`clang file.cpp` with no include paths and reports `'Arduino.h' file not found`.
-Restart the language server afterwards (`:LspRestart` in Neovim).
+Regenerate the database after a fresh clone. It is gitignored because it embeds absolute toolchain paths. Without it clangd falls back to a bare `clang file.cpp` with no include paths and reports `'Arduino.h' file not found`. Restart the language server afterwards (`:LspRestart` in Neovim).
 
-`.clangd` handles two clang-versus-GCC disagreements; see the comments in that
-file. The build itself is GCC (`arm-none-eabi-g++`) and is unaffected by any of
-it — when clangd and `pio run` disagree, `pio run` is authoritative.
+`.clangd` handles two clang-versus-GCC disagreements, explained in that file. The build itself is GCC (`arm-none-eabi-g++`). When clangd and `pio run` disagree, `pio run` is right.
