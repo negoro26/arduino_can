@@ -1,11 +1,13 @@
 #include "loopback_demo_hal.h"
 
-bool LoopbackDemoHal::canOpen(Bitrate rate, CanMode, const Acceptance &acc) {
+bool LoopbackDemoHal::canOpen(Bitrate rate, CanMode mode, const Acceptance &acc) {
   rate_ = rate;
+  selfTest_ = mode == CanMode::Loopback;
   return Mcp2515Hal::canOpen(rate, CanMode::Loopback, acc);
 }
 
 TxStatus LoopbackDemoHal::canSend(const ClearedFrame &frame) {
+  if (selfTest_) return Mcp2515Hal::canSend(frame);
   if (!frame.valid()) return TxStatus::Failed;
   const TxStatus status = sendRaw(frame.frame());
   if (status != TxStatus::Sent || rate_ != car_.bitrate()) return TxStatus::Failed;
@@ -14,6 +16,7 @@ TxStatus LoopbackDemoHal::canSend(const ClearedFrame &frame) {
 }
 
 bool LoopbackDemoHal::canReceive(CanFrame &out) {
+  if (selfTest_) return Mcp2515Hal::canReceive(out);
   CanFrame due;
   if (car_.poll(micros(), &due) && isOpen() && rate_ == car_.bitrate()) {
     sendRaw(due);
