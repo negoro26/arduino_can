@@ -1,6 +1,7 @@
 #ifndef TEST_HAL_H
 #define TEST_HAL_H
 
+#include <stdio.h>
 #include <unity.h>
 
 #include <algorithm>
@@ -36,6 +37,8 @@ class TestHal final : public SimCanHal {
   uint32_t now() const { return nowUs_; }
   void sleepMs(uint32_t ms) { nowUs_ += ms * 1000; }
   void setCanOpenFails(bool fails) { canOpenFails_ = fails; }
+  void setLinkTrusted(bool trusted) { linkTrusted_ = trusted; }
+  void setWifiStatus(std::vector<std::string> lines) { wifi_ = std::move(lines); }
 
   bool canOpen(Bitrate rate, CanMode mode, const Acceptance &acc) override {
     return !canOpenFails_ && SimCanHal::canOpen(rate, mode, acc);
@@ -56,6 +59,14 @@ class TestHal final : public SimCanHal {
   void write(const char *bytes, uint16_t length) override {
     output_.append(bytes, length);
     nowUs_ += static_cast<uint32_t>(length) * writeCostUs_;
+  }
+
+  void flush() override {}
+  bool linkTrusted() override { return linkTrusted_; }
+  bool wifiStatus(uint8_t index, char *out, uint8_t capacity) override {
+    if (index >= wifi_.size()) return false;
+    snprintf(out, capacity, "%s", wifi_[index].c_str());
+    return true;
   }
 
   uint32_t nowMs() override {
@@ -97,6 +108,8 @@ class TestHal final : public SimCanHal {
   uint32_t stalls_ = 0;
   uint16_t writeCostUs_ = 0;
   bool canOpenFails_ = false;
+  bool linkTrusted_ = true;
+  std::vector<std::string> wifi_;
   std::vector<std::pair<uint32_t, char>> input_;
   std::string output_;
   std::vector<std::pair<uint32_t, CanFrame>> wire_;

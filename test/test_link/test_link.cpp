@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "link_mux.h"
+#include "test_hal.h"
 
 void setUp(void) {}
 void tearDown(void) {}
@@ -197,6 +198,132 @@ static void held_tcp_output_goes_after_20_ms(void) {
   TEST_ASSERT_EQUAL_STRING("X", tcp.sent[2].second.c_str());
 }
 
+// The firmware and simulator Hals in miniature: the CAN side from SimCanHal,
+// the serial side through a LinkMux, virtual time.
+class MuxHal final : public SimCanHal {
+ public:
+  explicit MuxHal(const CarSpec &car) : SimCanHal(car, 2), mux(usb, tcp) {}
+
+  FakeUsb usb;
+  FakeTcp tcp;
+  LinkMux mux;
+  uint32_t hangUpAtMs = UINT32_MAX;
+
+  void poll() { mux.poll(nowMs()); }
+
+  int readByte() override { return mux.readByte(); }
+  void write(const char *bytes, uint16_t length) override {
+    mux.write(bytes, length, nowMs());
+  }
+  void flush() override { mux.flush(); }
+  bool linkTrusted() override { return !mux.onTcp(); }
+  bool wifiStatus(uint8_t index, char *out, uint8_t capacity) override {
+    if (index > 0) return false;
+    snprintf(out, capacity, "WIFI TEST");
+    return true;
+  }
+  uint32_t nowMs() override { return nowUs_ / 1000; }
+  void idleUntil(Deadline d) override {
+    uint32_t target = hangUpAtMs == UINT32_MAX ? UINT32_MAX : hangUpAtMs * 1000;
+    if (!d.isNever()) target = std::min(target, d.atMs() * 1000);
+    uint32_t bus;
+    if (nextBusEvent(&bus)) target = std::min(target, bus);
+    if (target == UINT32_MAX) TEST_FAIL_MESSAGE("idleUntil(never) with nothing scheduled");
+    nowUs_ = std::max(nowUs_, target);
+    if (nowUs_ >= hangUpAtMs * 1000ull) tcp.open = false;
+  }
+
+ protected:
+  uint32_t nowUs() override { return nowUs_; }
+
+ private:
+  uint32_t nowUs_ = 0;
+};
+
+static void elm_answers_on_the_session_link_only(void) {
+  MuxHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>", hal.usb.out.c_str());
+  hal.usb.out.clear();
+
+  hal.usb.in = "ATI\r";
+  hal.tcp.connect("ATI\rATE0\r");
+  hal.poll();
+  elm.service();
+  TEST_ASSERT_EQUAL_size_t(2, hal.tcp.sent.size());
+  TEST_ASSERT_EQUAL_STRING("ATI\rELM327 v1.5\r\r>", hal.tcp.sent[0].second.c_str());
+  TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>", hal.tcp.sent[1].second.c_str());
+  TEST_ASSERT_EQUAL_STRING("", hal.usb.out.c_str());
+  TEST_ASSERT_EQUAL_STRING("ATI\r", hal.usb.in.c_str());
+
+  hal.tcp.open = false;
+  elm.service();
+  hal.poll();
+  elm.service();
+  // Echo stays off: switching links does not reset the settings.
+  TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>", hal.usb.out.c_str());
+}
+
+static void guard_write_is_refused_over_tcp(void) {
+  MuxHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  hal.tcp.connect("ATE0\rAT#GUARD WRITE\rAT#GUARD CLEAR\rAT#GUARD\r");
+  hal.poll();
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>?\r\r>OK\r\r>CLEAR\r\r>", hal.tcp.all().c_str());
+
+  hal.tcp.open = false;
+  elm.service();
+  hal.poll();
+  hal.usb.in = "AT#GUARD WRITE\rAT#GUARD\r";
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>OK\r\r>WRITE\r\r>", hal.usb.out.c_str());
+}
+
+static void monitor_over_tcp_streams_and_stops_when_the_client_goes(void) {
+  MuxHal hal(renaultDaciaCar());
+  Elm elm(hal);
+  elm.begin();
+  hal.tcp.connect("ATE0\rATH1\rATSP6\r");
+  hal.poll();
+  elm.service();
+  hal.tcp.sent.clear();
+
+  hal.hangUpAtMs = hal.nowMs() + 25;
+  hal.tcp.in = "ATMA\r";
+  elm.service();
+  TEST_ASSERT_TRUE(hal.tcp.sent.size() >= 2);
+  for (const auto &w : hal.tcp.sent) {
+    TEST_ASSERT_NULL(strchr(w.second.c_str(), '>'));
+  }
+  TEST_ASSERT_EQUAL_STRING("181 0B B8 00 00 1E 00 00 00\r"
+                           "354 00 00 00 00 00 00 00 00\r",
+                           hal.tcp.all().substr(0, 56).c_str());
+
+  hal.poll();
+  TEST_ASSERT_FALSE(hal.mux.onTcp());
+  hal.usb.in = "ATI\r";
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>ELM327 v1.5\r\r>", hal.usb.out.c_str());
+}
+
+static void at_wifi_prints_the_hal_lines(void) {
+  TestHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  hal.setWifiStatus({"WIFI AP MKR-OBDII WPA2 192.168.0.10:35000",
+                     "WINC firmware 19.6.1", "CLIENT 192.168.0.100 connected"});
+  TEST_ASSERT_EQUAL_STRING(
+      "AT#WIFI\rWIFI AP MKR-OBDII WPA2 192.168.0.10:35000\r"
+      "WINC firmware 19.6.1\rCLIENT 192.168.0.100 connected\r\r>",
+      ask(hal, elm, "AT#WIFI").c_str());
+  hal.setWifiStatus({"WIFI OFF: no WINC1500 found"});
+  TEST_ASSERT_EQUAL_STRING("AT#WIFI\rWIFI OFF: no WINC1500 found\r\r>",
+                           ask(hal, elm, "AT#WIFI").c_str());
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(usb_is_the_session_without_a_client);
@@ -206,5 +333,9 @@ int main(int, char **) {
   RUN_TEST(tcp_output_waits_for_the_prompt);
   RUN_TEST(tcp_output_goes_in_1400_byte_chunks);
   RUN_TEST(held_tcp_output_goes_after_20_ms);
+  RUN_TEST(elm_answers_on_the_session_link_only);
+  RUN_TEST(guard_write_is_refused_over_tcp);
+  RUN_TEST(monitor_over_tcp_streams_and_stops_when_the_client_goes);
+  RUN_TEST(at_wifi_prints_the_hal_lines);
   return UNITY_END();
 }

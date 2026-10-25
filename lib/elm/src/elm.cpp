@@ -166,6 +166,7 @@ void Elm::monitor() {
     if (w == Wake::Interrupted) break;
     if (w == Wake::Timeout) {
       hal_.write(batch, static_cast<uint16_t>(used));
+      hal_.flush();
       used = 0;
       flushAt = Deadline::never();
       continue;

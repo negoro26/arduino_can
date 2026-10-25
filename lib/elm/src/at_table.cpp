@@ -360,10 +360,22 @@ const AtCommand AtTable::rows[] = {
        return AtReply::Printed;
      },
      nullptr, false},
+    // WRITE can be unlocked over USB only: the TCP link is open to anyone
+    // with the access point's password.
     {"#GUARD", AtShape::TierWord,
      [](Elm &e, const AtArgs &a) {
+       if (a.tier == Tier::Write && !e.hal_.linkTrusted()) return AtReply::Bad;
        e.guard_.setTier(a.tier);
        return AtReply::Ok;
+     },
+     nullptr, false},
+    {"#WIFI", AtShape::None,
+     [](Elm &e, const AtArgs &) {
+       char line[64];
+       for (uint8_t i = 0; e.hal_.wifiStatus(i, line, sizeof line); ++i) {
+         e.print(line);
+       }
+       return AtReply::Printed;
      },
      nullptr, false},
     {"#SURVEY", AtShape::None,

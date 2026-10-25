@@ -1,4 +1,6 @@
-// The firmware Hal: native USB CDC + millis() + the MKR CAN shield's MCP2515.
+// The firmware Hal: millis() + the MKR CAN shield's MCP2515 + the session
+// link, native USB CDC or the WINC1500's TCP link (wifi_link.h) as LinkMux
+// picks it.
 //
 // Every MCP2515 quirk the core must not know about is absorbed here:
 //   - TXB0 only. The chip sends the highest-numbered pending buffer first, so
@@ -22,15 +24,23 @@
 #include <mcp2515.h>
 
 #include "hal.h"
+#include "link_mux.h"
 #include "rx_order.h"
+#include "wifi_link.h"
 
 class Mcp2515Hal : public Hal {
  public:
   Mcp2515Hal();
+  // USB first, then the WiFi access point; USB works whatever WiFi does.
   void begin();
+  // Between commands only (see LinkMux::poll).
+  void pollLinks();
 
   int readByte() override;
   void write(const char *bytes, uint16_t length) override;
+  void flush() override;
+  bool linkTrusted() override;
+  bool wifiStatus(uint8_t index, char *out, uint8_t capacity) override;
   uint32_t nowMs() override;
   void idleUntil(Deadline d) override;
 
@@ -48,6 +58,12 @@ class Mcp2515Hal : public Hal {
   bool isOpen() const { return open_; }
 
  private:
+  class Usb final : public ByteLink {
+   public:
+    uint16_t read(uint8_t *out, uint16_t capacity) override;
+    void write(const char *bytes, uint16_t length) override;
+  };
+
   struct Controller {
     Mcp2515Hal &hal;
     uint8_t firstStatus;
@@ -69,6 +85,9 @@ class Mcp2515Hal : public Hal {
   Bitrate rate_ = Bitrate::k500;
   Acceptance acc_ = Acceptance::all();
   CanHealth health_{};
+  Usb usb_;
+  WifiLink wifi_;
+  LinkMux links_;
 };
 
 #endif  // MCP2515_HAL_H
