@@ -1,14 +1,3 @@
-// The ELM settings model and every rule derived from it.
-//
-// Settings is exactly what ATZ / ATWS / ATD reset: all fields at once, via
-// `set_ = Settings{}`. State that must survive those commands (guard tier,
-// stored protocol) is deliberately NOT in this struct, so no reset can reach
-// it -- see Elm's members.
-//
-// Rules that turn settings into bus behaviour (which id to send on, which ids
-// to accept, flow-control frame, wait windows) are free functions here, so
-// each rule lives in exactly one place and is unit-testable without a bus.
-
 #ifndef ELM_SETTINGS_H
 #define ELM_SETTINGS_H
 
@@ -25,36 +14,35 @@ struct TxHeader {
 };
 
 enum class RxFilterMode : uint8_t {
-  Auto,     // AT AR / AT CRA (no arg) / defaults: 7E8/7F8 or 18DAF100/1FFFFF00
-  Pattern,  // AT CRA hhh[hhhhh] with X wildcards, or AT CF + AT CM
+  Auto,
+  Pattern,
 };
 
 struct RxFilter {
   RxFilterMode mode = RxFilterMode::Auto;
-  uint32_t id = 0;    // CRA 7EX -> id 7E0
-  uint32_t mask = 0;  // CRA 7EX -> mask 7F0; CF without CM -> all ones
+  uint32_t id = 0;
+  uint32_t mask = 0;
 };
 
-// AT FC SM / SH / SD.
 struct FlowControl {
-  uint8_t mode = 0;      // 0 auto, 1 user id + data, 2 auto id + user data
-  TxHeader header;       // FC SH (mode 1 only)
-  uint8_t data[5] = {};  // FC SD; the rest of the frame is padded with 00
-  uint8_t dataLen = 0;   // 0 = not set
+  uint8_t mode = 0;
+  TxHeader header;
+  uint8_t data[5] = {};
+  uint8_t dataLen = 0;
 };
 
 struct Settings {
-  bool echo = true;          // E
-  bool linefeeds = false;    // L
-  bool spaces = true;        // S
-  bool headers = false;      // H
-  bool dlc = false;          // D1 (shown only with H1)
-  bool responses = true;     // R
-  bool caf = true;           // CAF
-  bool cfc = true;           // CFC
-  bool allowLong = false;    // AL / NL (accepted; CAN behaviour unchanged)
-  bool varDlc = false;       // V1: send exactly the given bytes, no padding
-  uint8_t adaptive = 1;      // AT 0/1/2
+  bool echo = true;
+  bool linefeeds = false;
+  bool spaces = true;
+  bool headers = false;
+  bool dlc = false;
+  bool responses = true;
+  bool caf = true;
+  bool cfc = true;
+  bool allowLong = false;
+  bool varDlc = false;
+  uint8_t adaptive = 1;
   uint8_t stTicks = 0x32;    // AT ST, 4 ms units
   uint8_t canPriority = 0x18;  // AT CP: top 5 bits of a 29-bit id
   ProtocolSel protocol{Protocol::None, true};
@@ -63,11 +51,6 @@ struct Settings {
   FlowControl fc;
 };
 
-// ------------------------------------------------------------- derivations
-// Each takes the protocol explicitly because the auto search evaluates them
-// for protocols other than settings.protocol.current.
-
-// A typed header at the protocol's width (see TxHeader).
 CanId headerId(const TxHeader &h, uint8_t canPriority, Protocol p);
 
 // Id a request goes out on: AT SH if set, else 7DF / 18DB33F1 (functional).
@@ -92,8 +75,8 @@ CanFrame requestFrame(const Settings &s, Protocol p, const uint8_t *bytes,
 CanFrame flowControlFrame(const Settings &s, Protocol p,
                           const CanFrame &firstFrame);
 
-uint16_t firstWaitMs(const Settings &s);  // AT ST x 4 ms
-uint16_t nextWaitMs(const Settings &s);   // AT0: ST, AT1: min(ST,50), AT2: min(ST,25)
-constexpr uint16_t kPendingWaitMs = 5000;  // after each 7F xx 78
+uint16_t firstWaitMs(const Settings &s);
+uint16_t nextWaitMs(const Settings &s);
+constexpr uint16_t kPendingWaitMs = 5000;
 
 #endif  // ELM_SETTINGS_H

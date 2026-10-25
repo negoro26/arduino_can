@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Open a serial terminal on the MKR1000 running the ELM327 firmware.
 set -euo pipefail
 
 PIO="$(command -v pio || true)"

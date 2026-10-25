@@ -12,8 +12,6 @@ static bool earlier(uint32_t a, uint32_t b) {
   return static_cast<int32_t>(a - b) < 0;
 }
 
-// ---------------------------------------------------------------- VirtualEcu
-
 void VirtualEcu::bind(const EcuSpec *spec, Bitrate busRate) {
   spec_ = spec;
   // Time one 8-byte frame occupies the wire (~115 bits with stuffing).
@@ -72,11 +70,11 @@ void VirtualEcu::deliver(const CanFrame &f, uint32_t nowUs) {
     case Pci::FlowControl: {
       if (!physical || phase_ != Phase::AwaitFc || f.dlc < 3) return;
       const uint8_t status = f.data[0] & 0x0F;
-      if (status == 1) {  // wait
+      if (status == 1) {
         dueUs_ = nowUs + 1000000;
         return;
       }
-      if (status != 0) {  // overflow / invalid: abandon
+      if (status != 0) {
         phase_ = Phase::Idle;
         return;
       }
@@ -175,10 +173,10 @@ bool VirtualEcu::poll(uint32_t nowUs, CanFrame *out) {
       txSent_ = 6;
       txSeq_ = 1;
       phase_ = Phase::AwaitFc;
-      dueUs_ = at + 1000000;  // N_Bs
+      dueUs_ = at + 1000000;
       return true;
     case Phase::AwaitFc:
-      phase_ = Phase::Idle;  // the client never sent its flow control
+      phase_ = Phase::Idle;
       return false;
     case Phase::SendingCf: {
       out->id = spec_->reply;
@@ -210,15 +208,12 @@ bool VirtualEcu::nextDue(uint32_t *atUs) const {
   return true;
 }
 
-// ---------------------------------------------------------------- VirtualCar
-
 VirtualCar::VirtualCar(const CarSpec &spec) : spec_(spec) {
   if (spec_.ecuCount > kMaxEcus) spec_.ecuCount = kMaxEcus;
   if (spec_.trafficCount > kMaxTraffic) spec_.trafficCount = kMaxTraffic;
   for (uint8_t i = 0; i < spec_.ecuCount; ++i) {
     ecus_[i].bind(&spec_.ecus[i], spec_.bitrate);
   }
-  // Staggered so periodic frames do not all collide on the same instant.
   for (uint8_t i = 0; i < spec_.trafficCount; ++i) {
     nextPeriodicUs_[i] = 700u + 1300u * i;
   }
@@ -260,8 +255,6 @@ bool VirtualCar::poll(uint32_t nowUs, CanFrame *out) {
     const Periodic &p = spec_.traffic[periodic];
     const uint32_t period = static_cast<uint32_t>(p.periodMs) * 1000;
     uint32_t &next = nextPeriodicUs_[periodic];
-    // After a long pause (controller closed, simulator idle at the prompt)
-    // skip the backlog instead of replaying every missed period.
     const uint32_t behind = nowUs - next;
     if (behind >= 2 * period) next += (behind / period - 1) * period;
     *out = p.frame;
@@ -297,8 +290,6 @@ bool VirtualCar::transmits(CanId id) const {
   }
   return false;
 }
-
-// -------------------------------------------------------------------- SimBus
 
 SimBus::SimBus(VirtualCar &car, uint8_t rxSlots)
     : car_(car),

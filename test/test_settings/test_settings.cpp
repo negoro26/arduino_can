@@ -1,5 +1,3 @@
-// Settings reset semantics and the AT command table.
-
 #include <unity.h>
 
 #include <string>
@@ -11,7 +9,6 @@ void tearDown(void) {}
 
 static std::string reply(TestHal &hal, Elm &elm, const std::string &line) {
   const std::string out = ask(hal, elm, line);
-  // Strip the echo and the closing "\r\r>".
   const std::string echo = line + "\r";
   std::string body = out.compare(0, echo.size(), echo) == 0 ? out.substr(echo.size()) : out;
   if (body.size() >= 2 && body.compare(body.size() - 2, 2, "\r>") == 0) {
@@ -19,8 +16,6 @@ static std::string reply(TestHal &hal, Elm &elm, const std::string &line) {
   }
   return body;
 }
-
-// ------------------------------------------------------------- matching
 
 static void longest_matching_name_wins(void) {
   AtArgs a{};
@@ -78,8 +73,6 @@ static void protocol_selection_forms(void) {
   TEST_ASSERT_TRUE(a.automatic);
   TEST_ASSERT_NOT_NULL(findAt("TP8", &a));
 }
-
-// ------------------------------------------------------- client commands
 
 // Every command ddt4all's and pyren's adapter checkers flag 'P' (and their
 // CAN setup) must not answer "?", or the user is told the adapter is fake.
@@ -151,8 +144,6 @@ static void protocol_display(void) {
   TEST_ASSERT_EQUAL_STRING("AUTO, ISO 15765-4 (CAN 29/500)\r", reply(hal, elm, "ATDP").c_str());
 }
 
-// ---------------------------------------------------------------- reset
-
 static void reset_restores_every_setting_but_keeps_the_stored_protocol(void) {
   TestHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
@@ -163,9 +154,7 @@ static void reset_restores_every_setting_but_keeps_the_stored_protocol(void) {
   }
   hal.clearOutput();
   run(hal, elm, "ATZ");
-  // Echo was off when ATZ arrived; the banner already uses the reset L0.
   TEST_ASSERT_EQUAL_STRING("\rELM327 v1.5\r\r>", hal.output().c_str());
-  // Echo is back on, and AT SP 8 (stored) beats AT TP 9.
   TEST_ASSERT_EQUAL_STRING("ATDPN\r8\r\r>", ask(hal, elm, "ATDPN").c_str());
 }
 

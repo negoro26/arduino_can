@@ -1,9 +1,3 @@
-// The CAN half of a Hal over SimBus + VirtualCar.
-//
-// TestHal (virtual time, test/support/test_hal.h) and PtyHal (real time,
-// src/sim/pty_hal.h) differ only in clock and serial; the CAN behaviour is
-// this class's, so the tests and the simulator exercise the same bus model.
-
 #ifndef SIM_CAN_HAL_H
 #define SIM_CAN_HAL_H
 

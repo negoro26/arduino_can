@@ -1,6 +1,3 @@
-// The device-level write guard: service table, ISO-TP frame classification,
-// and the tier's lifetime (only power-up and AT#GUARD change it).
-
 #include <unity.h>
 
 #include "test_hal.h"

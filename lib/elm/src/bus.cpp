@@ -1,7 +1,5 @@
 #include "bus.h"
 
-// ------------------------------------------------------------------ await
-
 static void discardRestOfLine(BusSide &bus, int first) {
   if (first == '\r') return;
   const Deadline d = Deadline::after(bus.nowMs(), kInterruptLineRestMs);
@@ -27,8 +25,6 @@ Wake await(BusSide &bus, Deadline d, CanFrame *out) {
     bus.idleUntil(d);
   }
 }
-
-// ------------------------------------------------------------- link state
 
 bool LinkState::configure(BusSide &bus, Bitrate r, CanMode m,
                           const Acceptance &a) {
@@ -68,8 +64,6 @@ LbtVerdict listenBeforeTalk(BusSide &bus, LinkState &link, Bitrate rate,
                                           : LbtVerdict::Silent;
 }
 
-// --------------------------------------------------------- one transaction
-
 bool RxLog::push(const CanFrame &f) {
   if (count >= kCapacity) return false;
   frames[count++] = f;
@@ -78,8 +72,6 @@ bool RxLog::push(const CanFrame &f) {
 
 namespace {
 
-// Consecutive frames still owed by responders whose first frame we answered
-// with a flow control.
 class OwedFrames {
  public:
   void expect(const CanFrame &firstFrame) {
@@ -148,7 +140,6 @@ Outcome converse(BusSide &bus, Guard &guard, LinkState &link,
 
   CanFrame rx;
   while (bus.canReceive(rx)) {
-    // Late answers to an earlier request: not part of this one.
   }
   if (!link.configure(bus, rate, CanMode::Normal, want)) {
     return Outcome::CanError;
@@ -238,8 +229,6 @@ Outcome search(BusSide &bus, Guard &guard, LinkState &link, Settings &s,
   log.clear();
   return Outcome::UnableToConnect;
 }
-
-// --------------------------------------------------- AT#SURVEY / SELFTEST
 
 bool surveyRate(BusSide &bus, Bitrate rate, uint16_t windowMs,
                 RateReport *out) {

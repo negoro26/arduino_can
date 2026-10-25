@@ -1,5 +1,3 @@
-// Vocabulary shared by every module of the ELM327 core.
-//
 // Pure C++17: no Arduino, no heap, no STL, no exceptions, so it compiles
 // unchanged for the SAMD21 firmware, the native Unity tests and the PTY
 // simulator.
@@ -9,9 +7,6 @@
 
 #include <stdint.h>
 
-// An 11-bit or 29-bit CAN identifier. The width travels with the value: an
-// 11-bit 7E8 and a 29-bit 000007E8 never compare equal. Bit 31 is autowp's
-// CAN_EFF_FLAG, so the MCP2515 adapter converts by copying.
 class CanId {
  public:
   constexpr CanId() : raw_(0) {}
@@ -33,25 +28,21 @@ class CanId {
   uint32_t raw_;
 };
 
-// One classic CAN data frame. 16 bytes: RxLog's RAM budget depends on it.
 struct CanFrame {
   CanId id;
-  uint8_t dlc;      // 0..8
+  uint8_t dlc;
   uint8_t data[8];  // bytes at index >= dlc are unspecified
 };
 
 bool sameFrame(const CanFrame &a, const CanFrame &b);  // id, dlc, dlc bytes
 
-// ISO 15765-2 reading of data[0]. The guard, the receive loop, the formatter
-// and the virtual ECUs all use this one function, so the PCI rules exist once.
+// ISO 15765-2 reading of data[0].
 enum class Pci : uint8_t { Single, First, Consecutive, FlowControl, Other };
-Pci pciOf(const CanFrame &f);  // dlc == 0 -> Other
+Pci pciOf(const CanFrame &f);
 // Payload length of a single frame, 0 if its PCI is not a valid single frame.
 uint8_t singleFrameLength(const CanFrame &f);
 uint16_t firstFrameLength(const CanFrame &f);  // Pci::First only: 12-bit length
 bool isResponsePending(const CanFrame &f);     // single frame "03 7F xx 78"
-
-// ------------------------------------------------------- controller config
 
 enum class Bitrate : uint8_t { k500, k250, k125, k100 };
 uint16_t bitrateKbit(Bitrate r);
@@ -63,32 +54,28 @@ enum class CanMode : uint8_t { ListenOnly, Normal, Loopback };
 // Receive acceptance: what the controller is programmed to pass AND what the
 // core re-checks in software (hardware filters are a load reduction only).
 struct Acceptance {
-  bool any;       // every frame of both widths (LBT, survey, self-test)
+  bool any;       // every frame of both widths
   bool ext;       // width the id/mask apply to
   uint32_t id;
-  uint32_t mask;  // 1 bits must match
+  uint32_t mask;
 
   static constexpr Acceptance all() { return {true, false, 0, 0}; }
   bool accepts(CanId id) const;
   bool operator==(const Acceptance &o) const;
 };
 
-// Controller health since the last canOpen(). Drives listen-before-talk,
-// AT CS, AT#SURVEY and BUFFER FULL.
 struct CanHealth {
-  uint8_t tec;           // transmit error counter
-  uint8_t rec;           // receive error counter
-  uint16_t errorEvents;  // ERRIF/MERRF occurrences (the probe's `errors`)
+  uint8_t tec;
+  uint8_t rec;
+  uint16_t errorEvents;  // ERRIF/MERRF occurrences
   bool rxOverflow;       // a frame was lost because both RX buffers were full
 };
 
 enum class TxStatus : uint8_t { Sent, Failed };  // Failed: bus error / no ACK
 
-// --------------------------------------------------------------- protocols
-
 // ELM protocol numbers. 1-5 are K-line/J1850: selectable, never connectable.
 enum class Protocol : uint8_t {
-  None = 0,  // only meaningful as ProtocolSel::current = "not found yet"
+  None = 0,
   J1850Pwm = 1, J1850Vpw = 2, Iso9141 = 3, Kwp5Baud = 4, KwpFast = 5,
   Can11_500 = 6, Can29_500 = 7, Can11_250 = 8, Can29_250 = 9,
 };
@@ -112,10 +99,6 @@ constexpr Bitrate bitrateOf(Protocol p) {
                                                                 : Bitrate::k250;
 }
 
-// -------------------------------------------------------------------- time
-
-// A point in Hal::nowMs() time. Wrap-safe (uint32 ms wraps after 49 days), and
-// the only way the core compares times.
 class Deadline {
  public:
   static Deadline after(uint32_t nowMs, uint32_t ms) {

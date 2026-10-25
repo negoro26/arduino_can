@@ -1,6 +1,3 @@
-// Whole-adapter transcripts, one per client dialect, against the virtual car.
-// Each expected string is exactly what the client reads up to the prompt.
-
 #include <unity.h>
 
 #include <string>
@@ -34,8 +31,6 @@ static bool sameBytes(const CanFrame &f, std::initializer_list<uint8_t> bytes) {
   return true;
 }
 
-// ------------------------------------------------------- pyren / ddt4all
-
 static void pyren_reads_multi_frame_vin_raw_with_automatic_flow_control(void) {
   TestHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
@@ -51,8 +46,6 @@ static void pyren_reads_multi_frame_vin_raw_with_automatic_flow_control(void) {
   TEST_ASSERT_EQUAL_size_t(2, wire.size());
   TEST_ASSERT_TRUE(wire[0].second.id == CanId::std11(0x7E0));
   TEST_ASSERT_TRUE(sameBytes(wire[0].second, {0x03, 0x22, 0xF1, 0x90, 0, 0, 0, 0}));
-  // FC SM 1: FC SH id + FC SD data, sent the instant the first frame arrived
-  // (the ECM answers 2 ms after the request).
   TEST_ASSERT_TRUE(wire[1].second.id == CanId::std11(0x7E0));
   TEST_ASSERT_TRUE(sameBytes(wire[1].second, {0x30, 0x00, 0x00, 0, 0, 0, 0, 0}));
   TEST_ASSERT_EQUAL_UINT32(wire[0].first + 2000, wire[1].first);
@@ -87,8 +80,6 @@ static void airbag_response_pending_then_final_answer_in_one_reply(void) {
                            "2149430000000000\r"
                            "\r>",
                            ask(hal, elm, "0322F18A").c_str());
-  // The final answer came 300 ms after the pending frame, beyond AT ST FF's
-  // reach from the request if 7F 22 78 had not extended the wait.
   TEST_ASSERT_TRUE(hal.now() - start > 300000);
   TEST_ASSERT_EQUAL_STRING("021003\r037F107800000000\r065003003201F400\r\r>",
                            ask(hal, elm, "021003").c_str());
@@ -119,8 +110,6 @@ static void pyren_count_digit_and_responses_off(void) {
   TEST_ASSERT_TRUE(hal.now() == start);
   TEST_ASSERT_TRUE(sameBytes(hal.wire().back().second, {0x02, 0x3E, 0x00, 0, 0, 0, 0, 0}));
 }
-
-// ------------------------------------------------------------ python-OBD
 
 static void python_obd_connects_with_search(void) {
   TestHal hal(renaultDaciaCarQuiet());
@@ -153,7 +142,6 @@ static void python_obd_count_digit_and_bare_cr_repeat(void) {
                            "7E8 21 35 53 44 41 47 35 35\r"
                            "7E8 22 31 32 33 34 35 36 37\r\r>",
                            ask(hal, elm, "09023").c_str());
-  // The automatic flow control for 7E8 goes to 7E0 (FC SM 0).
   TEST_ASSERT_TRUE(hal.wire().back().second.id == CanId::std11(0x7E0));
   TEST_ASSERT_EQUAL_STRING("7E8 03 41 05 5A 00 00 00 00\r\r>", ask(hal, elm, "0105").c_str());
   TEST_ASSERT_EQUAL_STRING("7E8 06 43 02 03 35 01 15 00\r\r>", ask(hal, elm, "03").c_str());
@@ -169,8 +157,6 @@ static void headers_off_multi_frame_layout(void) {
                            ask(hal, elm, "0902").c_str());
   TEST_ASSERT_EQUAL_STRING("41 0C 0B B8\r\r>", ask(hal, elm, "010C").c_str());
 }
-
-// ----------------------------------------------------------- interrupts
 
 static void byte_during_a_wait_stops_and_the_rest_of_its_line_is_dropped(void) {
   TestHal hal(renaultDaciaCarQuiet());
@@ -226,8 +212,6 @@ static void monitor_prints_traffic_until_a_byte_arrives(void) {
   TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
 }
 
-// ------------------------------------------------------- safety outcomes
-
 static void wrong_bitrate_is_can_error_with_nothing_transmitted(void) {
   TestHal hal(renaultDaciaCar());
   Elm elm(hal);
@@ -247,7 +231,6 @@ static void wrong_bitrate_on_a_silent_bus_fails_after_one_attempt(void) {
   pyrenSetup(hal, elm, "745", "765");
   run(hal, elm, "AT SP 8");
   TEST_ASSERT_EQUAL_STRING("0210C0\rCAN ERROR\r\r>", ask(hal, elm, "0210C0").c_str());
-  // Listen-before-talk heard nothing, so one one-shot frame was tried.
   TEST_ASSERT_EQUAL_size_t(1, hal.wire().size());
 }
 
@@ -290,8 +273,6 @@ static void guard_clear_lets_the_clear_request_through(void) {
   TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "2E010203").c_str());
 }
 
-// --------------------------------------------- no output inside a burst
-
 static const uint8_t kBigReq[] = {0x22, 0xF1, 0x99};
 static const uint8_t kBigRsp[64] = {0x62, 0xF1, 0x99, 0x01, 0x02, 0x03, 0x04, 0x05,
                                     0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D,
@@ -329,11 +310,8 @@ static void ten_frame_burst_with_slow_output_loses_nothing(void) {
   expected += "\r>";
   TEST_ASSERT_EQUAL_STRING(expected.c_str(), out.c_str());
   TEST_ASSERT_TRUE(out.find("BUFFER FULL") == std::string::npos);
-  // Echo CR + 10 frame lines + the blank line before the prompt.
   TEST_ASSERT_EQUAL_INT(12, std::count(out.begin(), out.end(), '\r'));
 }
-
-// ------------------------------------------------------- custom commands
 
 static void survey_finds_the_bitrate_and_lists_ids(void) {
   TestHal hal(renaultDaciaCar(Bitrate::k250));
@@ -386,8 +364,6 @@ static void selftest_round_trips_a_frame_at_every_rate(void) {
                            "LOOPBACK 250 kbit: PASS\rLOOPBACK 125 kbit: PASS\r"
                            "LOOPBACK 100 kbit: PASS\rSELFTEST: PASS\r\r>",
                            ask(hal, elm, "AT#SELFTEST").c_str());
-  // The self-test frame passed the guard and went to a controller in
-  // loopback: the car never saw it.
   TEST_ASSERT_EQUAL_size_t(4, hal.wire().size());
   TEST_ASSERT_TRUE(sameBytes(hal.wire()[0].second, {0x02, 0x10, 0xC0, 0, 0, 0, 0, 0}));
 }

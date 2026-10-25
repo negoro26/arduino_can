@@ -1,5 +1,3 @@
-// ISO-TP PCI rules, the input grammar and the response formatter.
-
 #include <unity.h>
 
 #include <string>
@@ -27,8 +25,6 @@ static std::string formatted(FrameFormatter &fmt, const CanFrame &f) {
 
 static const CanId k7E8 = CanId::std11(0x7E8);
 
-// ----------------------------------------------------------------- PCI
-
 static void pci_classes_come_from_the_high_nibble(void) {
   TEST_ASSERT_TRUE(pciOf(frame(k7E8, {0x02, 0x50, 0xC0})) == Pci::Single);
   TEST_ASSERT_TRUE(pciOf(frame(k7E8, {0x10, 0x14})) == Pci::First);
@@ -54,8 +50,6 @@ static void response_pending_is_exactly_7F_xx_78(void) {
   TEST_ASSERT_FALSE(isResponsePending(frame(k7E8, {0x03, 0x7F, 0x22, 0x31, 0, 0, 0, 0})));
   TEST_ASSERT_FALSE(isResponsePending(frame(k7E8, {0x04, 0x7F, 0x22, 0x78, 0x00})));
 }
-
-// --------------------------------------------------------------- input
 
 static void line_buffer_uppercases_and_drops_spaces(void) {
   LineBuffer line;
@@ -104,8 +98,6 @@ static void hex_request_limits_depend_on_caf(void) {
   TEST_ASSERT_FALSE(parseHexRequest("", true, &r));
   TEST_ASSERT_FALSE(parseHexRequest("STI", true, &r));
 }
-
-// ------------------------------------------------------------- framing
 
 static void caf1_request_gets_pci_and_padding(void) {
   Settings s;
@@ -203,8 +195,6 @@ static void wait_windows(void) {
   s.stTicks = 0xFF;
   TEST_ASSERT_EQUAL_UINT16(1020, firstWaitMs(s));
 }
-
-// -------------------------------------------------------------- output
 
 static void caf0_h0_s0_prints_every_byte_raw(void) {
   Settings s;

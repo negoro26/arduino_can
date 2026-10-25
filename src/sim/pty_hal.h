@@ -1,7 +1,3 @@
-// The simulator's Hal: real time and a pseudo-terminal that behaves like the
-// adapter's serial port, so ddt4all, pyren, python-OBD and tools/canscan.py
-// open it unmodified. The CAN side is SimCanHal over the virtual car.
-
 #ifndef PTY_HAL_H
 #define PTY_HAL_H
 
@@ -20,8 +16,6 @@ class PtyHal final : public SimCanHal {
   // a message on stderr) on failure.
   bool open();
 
-  // Blocks until the client sends something. Wakes at least once a second to
-  // keep the car's clock current: its schedule compares 32-bit differences.
   void waitForInput();
 
   int readByte() override;

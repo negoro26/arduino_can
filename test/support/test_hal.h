@@ -1,13 +1,3 @@
-// The native tests' Hal: virtual time, scripted serial input, captured output.
-//
-// Deterministic: time moves only in idleUntil() (and write(), if a write cost
-// is set). idleUntil(d) jumps to min(d, next bus event, next scripted byte).
-// Two hang guards turn design bugs into failures instead of hung test runs:
-// idleUntil() with nothing that can ever happen, and a wait loop that keeps
-// reading the clock (or idling) without time ever moving.
-//
-// Host-only, so it may use the STL.
-
 #ifndef TEST_HAL_H
 #define TEST_HAL_H
 
@@ -28,9 +18,7 @@ class TestHal final : public SimCanHal {
   explicit TestHal(const CarSpec &car, uint8_t rxSlots = 2)
       : SimCanHal(car, rxSlots) {}
 
-  // Bytes readable from now on.
   void type(const std::string &s) { typeAt(nowUs_ / 1000, s); }
-  // Bytes readable from virtual time `ms` (all at once).
   void typeAt(uint32_t ms, const std::string &s) {
     const uint32_t at = std::max(ms * 1000, nowUs_);
     auto pos = std::upper_bound(
@@ -44,13 +32,9 @@ class TestHal final : public SimCanHal {
   const std::vector<std::pair<uint32_t, CanFrame>> &wire() const {
     return wire_;
   }
-  // Makes each written byte cost virtual time, so a write inside a burst
-  // would show up as lost frames in the two-buffer bus model.
   void setWriteCostUs(uint16_t perByte) { writeCostUs_ = perByte; }
   uint32_t now() const { return nowUs_; }
-  // Lets virtual time pass with nobody polling the controller.
   void sleepMs(uint32_t ms) { nowUs_ += ms * 1000; }
-  // Makes every canOpen() fail, like a controller that will not configure.
   void setCanOpenFails(bool fails) { canOpenFails_ = fails; }
 
   bool canOpen(Bitrate rate, CanMode mode, const Acceptance &acc) override {
@@ -118,13 +102,11 @@ class TestHal final : public SimCanHal {
   std::vector<std::pair<uint32_t, CanFrame>> wire_;
 };
 
-// Types `line` + CR and lets the adapter process everything that is ready.
 inline void run(TestHal &hal, Elm &elm, const std::string &line) {
   hal.type(line + "\r");
   elm.service();
 }
 
-// Like run(), but returns only what this command printed.
 inline std::string ask(TestHal &hal, Elm &elm, const std::string &line) {
   hal.clearOutput();
   run(hal, elm, line);

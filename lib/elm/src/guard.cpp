@@ -25,8 +25,8 @@ bool parseTier(const char *word, Tier *out) {
 Tier tierOfService(uint8_t sid, bool hasSub, uint8_t sub) {
   switch (sid) {
     case 0x10: {
-      // Programming sessions (02, and 82/85 with suppress-positive-response)
-      // are the entry point to reflashing.
+      // Programming sessions (UDS 02, or 82 with suppress-positive-response;
+      // KWP2000 85) are the entry point to reflashing.
       const bool programming =
           hasSub && (sub == 0x02 || sub == 0x82 || sub == 0x85);
       return programming ? Tier::Write : Tier::Read;
@@ -73,7 +73,6 @@ bool Guard::admit(const CanFrame &f, ClearedFrame *out) {
     lastFirstId_ = f.id;
     lastFirstTier_ = t;
   } else if (pci == Pci::Single && haveFirst_ && lastFirstId_ == f.id) {
-    // A single frame ends any segmented request on that id.
     haveFirst_ = false;
   }
   if (t > tier_) return false;

@@ -31,17 +31,13 @@ class Mcp2515Hal : public Hal {
   int readByte() override;
   void write(const char *bytes, uint16_t length) override;
   uint32_t nowMs() override;
-  void idleUntil(Deadline d) override;  // busy poll: returns at once
+  void idleUntil(Deadline d) override;
 
-  // Full reconfiguration (reset, bitrate, the same id/mask on both masks and
-  // all six filters) only when the rate or acceptance changed or the
-  // controller was closed; otherwise just the CANCTRL mode bits.
   bool canOpen(Bitrate rate, CanMode mode, const Acceptance &acc) override;
   void canClose() override;
   TxStatus canSend(const ClearedFrame &frame) override;
   bool canReceive(CanFrame &out) override;
   CanHealth canHealth() override;
-  // The probe's stage 1: reset, raw-read CANSTAT/CANCTRL, expect 80/87.
   bool canProbe(char *detail, uint8_t capacity) override;
 
  protected:

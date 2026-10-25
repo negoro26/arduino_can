@@ -1,5 +1,3 @@
-// The virtual ECU's ISO-TP server, the virtual car and the simulated wire.
-
 #include <unity.h>
 
 #include <vector>
@@ -24,7 +22,6 @@ struct Timed {
   CanFrame frame;
 };
 
-// Runs the car until `untilUs`, collecting every frame at its due time.
 static std::vector<Timed> runCar(VirtualCar &car, uint32_t fromUs, uint32_t untilUs) {
   std::vector<Timed> out;
   uint32_t now = fromUs;
@@ -154,7 +151,6 @@ static void airbag_answers_pending_first(void) {
   const uint8_t pending[] = {0x03, 0x7F, 0x22, 0x78};
   TEST_ASSERT_EQUAL_HEX8_ARRAY(pending, got[0].frame.data, 4);
   TEST_ASSERT_EQUAL_UINT32(303000, got[1].atUs);
-  // 8 payload bytes: one more than a single frame holds.
   const uint8_t final[] = {0x10, 0x08, 0x62, 0xF1, 0x8A, 'T', 'E', 'M'};
   TEST_ASSERT_EQUAL_HEX8_ARRAY(final, got[1].frame.data, 8);
   car.deliver(frame(0x752, {0x03, 0x22, 0xF1, 0x90}), 1000000);
@@ -172,14 +168,11 @@ static void abs_ignores_extended_session(void) {
 static void periodic_traffic_skips_backlog_after_a_pause(void) {
   VirtualCar car(renaultDaciaCar());
   const std::vector<Timed> got = runCar(car, 1800000000u, 1800000000u);
-  // Half an hour late: at most two frames per source, not 180000.
   TEST_ASSERT_TRUE(got.size() <= 8);
   TEST_ASSERT_TRUE(car.transmits(CanId::std11(0x622)));
   TEST_ASSERT_TRUE(car.transmits(CanId::std11(0x765)));
   TEST_ASSERT_FALSE(car.transmits(CanId::std11(0x745)));
 }
-
-// ----------------------------------------------------------------- SimBus
 
 struct BusController {
   SimBus &bus;
@@ -193,7 +186,6 @@ static void two_buffers_overflow_on_the_third_frame(void) {
   SimBus bus(car, 2);
   bus.open(Bitrate::k500, CanMode::Normal, Acceptance::all(), 0);
   car.deliver(frame(0x7E0, {0x03, 0x22, 0xF1, 0x90}), 0);
-  // The first frame lands at 2000 us; this flow control releases the CFs.
   bus.send(frame(0x7E0, {0x30, 0x00, 0x00}), 2000);
   bus.advance(3000);
   TEST_ASSERT_TRUE(bus.health().rxOverflow);

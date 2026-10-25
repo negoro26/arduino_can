@@ -30,8 +30,6 @@ const uint8_t kClearKwp[] = {0x14, 0xFF, 0x00};
 const uint8_t kClearKwpOk[] = {0x54, 0xFF, 0x00};
 const uint8_t kIdent2180[] = {0x21, 0x80};
 
-// ------------------------------------------------------------------- ECM
-
 const uint8_t kDidPart[] = {0x22, 0xF1, 0x87};
 const uint8_t kDidPartOk[] = {0x62, 0xF1, 0x87, '2', '3', '7', '1', '0',
                               '7', '6', '3', '1', 'R'};
@@ -97,8 +95,6 @@ const Exchange kEcm[] = {
     EXCHANGE(kMode0902, kMode0902Ok, 0),
 };
 
-// ------------------------------------------------------------------- UCH
-
 const uint8_t kUchIdentOk[] = {
     0x61, 0x80, 0x82, 0x00, 0x44, 0x66, 0x27, 0x44, 0x32, 0x31, 0x33, 0x82, 0x00,
     0x38, 0x71, 0x38, 0x00, 0xA7, 0x75, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00};
@@ -114,8 +110,6 @@ const Exchange kUch[] = {
     EXCHANGE(kClearKwp, kClearKwpOk, 0),
 };
 
-// ------------------------------------------------------------------- ABS
-
 const uint8_t kAbsIdentOk[] = {0x61, 0x80, 0x01, 0x02, 0x03, 0x04, 0x05,
                                0x44, 0x42, 0x4F, 0x53, 0x01, 0x02, 0x03,
                                0x04, 0x05, 0x00, 0x12, 0x34, 0x56};
@@ -129,8 +123,6 @@ const Exchange kAbs[] = {
     EXCHANGE(kReadDtcKwp, kAbsDtcOk, 0),
     EXCHANGE(kClearKwp, kClearKwpOk, 0),
 };
-
-// ---------------------------------------------------------------- Airbag
 
 const uint8_t kAirbagSupplierOk[] = {0x62, 0xF1, 0x8A, 'T', 'E', 'M', 'I', 'C'};
 const uint8_t kAirbagDtcOk[] = {0x59, 0x02, 0xFF, 0x9A, 0x01, 0x11, 0x08};

@@ -1,11 +1,3 @@
-// Every blocking conversation with the CAN controller.
-//
-// All functions take BusSide&, never Hal&: they CANNOT write serial output, so
-// "no USB write while a burst may be arriving" holds by construction. They
-// collect what they observe (RxLog, reports) and return; Elm prints afterwards.
-//
-// Every wait is a loop around await(), the single blocking primitive.
-
 #ifndef ELM_BUS_H
 #define ELM_BUS_H
 
@@ -14,8 +6,6 @@
 #include "hal.h"
 #include "settings.h"
 #include "text.h"
-
-// ------------------------------------------------------------------ await
 
 enum class Wake : uint8_t { Frame, Interrupted, Timeout };
 
@@ -34,21 +24,18 @@ constexpr uint16_t kInterruptLineRestMs = 100;
 //   4. bus.idleUntil(d)            -> the only place test time advances
 Wake await(BusSide &bus, Deadline d, CanFrame *out);
 
-// ------------------------------------------------------------- link state
-
-// What the controller is configured as. Between transactions the controller
-// sits in ListenOnly: it never ACKs or error-flags at the prompt, so a
-// silent-at-connect wrong bitrate cannot start disturbing the bus when traffic
-// appears later.
+// Between transactions the controller sits in ListenOnly: it never ACKs or
+// error-flags at the prompt, so a silent-at-connect wrong bitrate cannot start
+// disturbing the bus when traffic appears later.
 struct LinkState {
   enum class Talk : uint8_t { Unchecked, Allowed, Mismatch };
   bool open = false;
   Bitrate rate = Bitrate::k500;
   Acceptance acc = Acceptance::all();
-  Talk talk = Talk::Unchecked;  // listen-before-talk verdict for `rate`
+  Talk talk = Talk::Unchecked;
 
   bool configure(BusSide &bus, Bitrate r, CanMode m, const Acceptance &a);
-  void close(BusSide &bus);  // canClose(); open = false; talk = Unchecked
+  void close(BusSide &bus);
 };
 
 enum class LbtVerdict : uint8_t { Verified, Silent, Mismatch, Fault };
@@ -60,27 +47,24 @@ LbtVerdict listenBeforeTalk(BusSide &bus, LinkState &link, Bitrate rate,
                             bool *interrupted);
 constexpr uint16_t kLbtWindowMs = 60;
 
-// --------------------------------------------------------- one transaction
-
-// Accepted frames of one request, printed by Elm after the window closes.
 struct RxLog {
   // One maximal ISO-TP message (4095 bytes) is 586 frames.
   static constexpr uint16_t kCapacity = 600;
   CanFrame frames[kCapacity];
   uint16_t count = 0;
   void clear() { count = 0; }
-  bool push(const CanFrame &f);  // false when full
+  bool push(const CanFrame &f);
 };
 
 enum class Outcome : uint8_t {
-  Answered,         // >= 1 frame in the log
-  NoData,           // "NO DATA"
-  Sent,             // R0 or count digit 0: transmitted, did not listen
-  Blocked,          // "BLOCKED"  -- guard refused; nothing touched the bus
-  CanError,         // "CAN ERROR" -- LBT mismatch, TX failure, controller fault
-  Stopped,          // "STOPPED"  -- after any logged frames
-  BufferFull,       // "BUFFER FULL" -- after the logged frames
-  UnableToConnect,  // "UNABLE TO CONNECT" -- search found nothing
+  Answered,
+  NoData,
+  Sent,
+  Blocked,
+  CanError,
+  Stopped,
+  BufferFull,
+  UnableToConnect,
 };
 
 // Send one request on protocol p and collect the answer. Blocks until done.
@@ -112,10 +96,6 @@ Outcome converse(BusSide &bus, Guard &guard, LinkState &link,
 Outcome search(BusSide &bus, Guard &guard, LinkState &link, Settings &s,
                const HexRequest &req, RxLog &log);
 
-// --------------------------------------------------- AT#SURVEY / SELFTEST
-
-// Fixed-capacity id set (from the probe). Overflow keeps the earliest ids and
-// is detectable.
 template <uint8_t Capacity>
 class SeenIds {
  public:
@@ -125,7 +105,7 @@ class SeenIds {
     }
     return false;
   }
-  bool add(CanId id) {  // false on duplicate or when full
+  bool add(CanId id) {
     if (contains(id) || count_ >= Capacity) return false;
     ids_[count_++] = id;
     return true;
@@ -140,24 +120,19 @@ class SeenIds {
 };
 
 struct RateReport {
-  bool setupFailed = false;  // canOpen refused the rate; nothing was heard
+  bool setupFailed = false;
   uint32_t frames = 0;
-  uint32_t errors = 0;  // errorEvents + rec, as the probe's stage 3 counted
+  uint32_t errors = 0;
   SeenIds<16> ids;
 };
 
-// ListenOnly + Acceptance::all() for windowMs. false if interrupted.
+// false if interrupted.
 bool surveyRate(BusSide &bus, Bitrate rate, uint16_t windowMs,
                 RateReport *out);
 
-// The probe's stage-3 wiring verdict: frames -> the rate is found; errors
-// without frames -> the pins are on a live bus but nothing decodes (swap H/L
-// or another rate); nothing at all -> not connected.
 enum class Wiring : uint8_t { BitrateFound, LiveBusUndecoded, NotConnected };
 Wiring wiringVerdict(uint32_t frames, uint32_t errors);
 
-// The probe's stage 2: Loopback mode, send 745 02 10 C0 00.. (admitted by the
-// guard like any frame), expect it back bit-exact within 50 ms.
 enum class Loopback : uint8_t { Pass, Fail, SetupFailed, Interrupted };
 Loopback loopbackRoundTrip(BusSide &bus, Guard &guard, Bitrate rate);
 

@@ -1,8 +1,3 @@
-// The AT command language as one table.
-//
-// One row per command form: name, argument shape, handler (or a Settings flag
-// for plain on/off commands). Adding a command is one row in at_table.cpp.
-//
 // Matching (findAt): the body is the normalized line after "AT" (uppercase, no
 // spaces). Among rows whose name is a prefix of the body AND whose shape
 // parses the rest, the LONGEST name wins. Row order is irrelevant.
@@ -25,17 +20,17 @@
 class Elm;
 
 enum class AtShape : uint8_t {
-  None,       // nothing after the name
-  Bit,        // 0 | 1
-  Digit012,   // 0 | 1 | 2
-  Hex2,       // hh
-  Dec4,       // dddd (AT CV)
+  None,
+  Bit,
+  Digit012,
+  Hex2,
+  Dec4,
   Header,     // 3, 6 or 8 hex digits
-  Bytes1to5,  // 1-5 hex bytes (FC SD)
-  Bytes1to6,  // 1-6 hex bytes (WM)
+  Bytes1to5,
+  Bytes1to6,
   Pattern,    // 3 or 8 chars of hex or X (CRA)
   ProtoSel,   // h | Ah | 00, h in 0-9 (A, B, C rejected)
-  TierWord,   // READ | CLEAR | WRITE
+  TierWord,
 };
 
 // Parsed argument; which fields are meaningful depends on the shape.
@@ -64,11 +59,8 @@ struct AtCommand {
   bool flagValue;         // None sets it to flagValue
 };
 
-// nullptr -> "?". On success *args holds the parsed argument.
 const AtCommand *findAt(const char *body, AtArgs *args);
 
-// Friend of Elm: the handlers (captureless lambdas in at_table.cpp, so name,
-// shape and behaviour sit on one line) read and write Elm's private state.
 // Absent on purpose (-> "?"): BRD BRT (USB CDC has no baud), MR MT, PP PPS,
 // @2 @3, LP, IGN, RA SR, MP DM1 JE JS (J1939), RTR, BD, and STI (not AT).
 struct AtTable {

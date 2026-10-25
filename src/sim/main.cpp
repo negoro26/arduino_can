@@ -1,11 +1,3 @@
-// Host simulator: the ELM327 core in front of a virtual Renault/Dacia car,
-// served on a pseudo-terminal.
-//
-//   program [--link PATH] [--car-bitrate 500|250] [--quiet]
-//
-// Prints "ready PATH" once the PTY is open, then serves until SIGINT/SIGTERM,
-// which remove the symlink.
-
 #include <signal.h>
 #include <stdio.h>
 #include <string.h>

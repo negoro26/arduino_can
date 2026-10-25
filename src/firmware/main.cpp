@@ -1,7 +1,3 @@
-// ELM327 v1.5-compatible adapter (CAN protocols only) on an Arduino MKR1000 +
-// MKR CAN shield, over native USB CDC. Built with -DELM_LOOPBACK_DEMO it
-// answers as a virtual Renault/Dacia through the MCP2515 in loopback mode.
-
 #include <Arduino.h>
 
 #include "elm.h"

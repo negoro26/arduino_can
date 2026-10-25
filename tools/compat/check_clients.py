@@ -47,9 +47,9 @@ LOG_DIR = CACHE / "logs"
 
 SIM_READY_TIMEOUT = 10.0
 CLIENT_TIMEOUT = 240.0   # includes uv resolving the client's environment on a first run
-CANSCAN_TIMEOUT = 400.0  # ~115 Renault request ids, two sessions each
+CANSCAN_TIMEOUT = 400.0
 GIT_TIMEOUT = 300.0
-RAW_TIMEOUT = 10.0       # one raw request, response-pending extensions included
+RAW_TIMEOUT = 10.0
 QUIET_TIME = 0.5
 
 CHECKS = ("python-obd", "ddt4all", "pyren", "guard", "bitrate", "canscan")
@@ -375,7 +375,6 @@ def client_python_obd(plan: dict, record: Callable[[str, object], None]) -> None
     record("protocol", connection.protocol_id())
     record("rpm", [value(connection.query(obd.commands.RPM)) for _ in range(3)])
     record("coolant", value(connection.query(obd.commands.COOLANT_TEMP)))
-    # The virtual ECM does not answer 09 00, so python-OBD never marks VIN supported by itself.
     vin = value(connection.query(obd.commands.VIN, force=True))
     record("vin", None if vin is None else bytes(vin).decode("ascii", "replace"))
     dtcs = value(connection.query(obd.commands.GET_DTC))

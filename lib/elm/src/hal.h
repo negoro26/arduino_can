@@ -9,9 +9,6 @@
 // an ISO-TP burst is arriving (a blocking USB write is ~1 ms; the MCP2515 has
 // two RX buffers and consecutive frames arrive every ~230 us at 500 kbit).
 // Only Elm holds a Hal& and prints, and only between windows.
-//
-// Implementations: Mcp2515Hal / LoopbackDemoHal (firmware), PtyHal (host
-// simulator, real time), TestHal (native tests, virtual time).
 
 #ifndef ELM_HAL_H
 #define ELM_HAL_H
@@ -26,9 +23,7 @@ class BusSide {
 
   virtual uint32_t nowMs() = 0;
   // "Nothing to do until d unless a byte or a frame arrives." May return
-  // early, never late. Firmware: returns at once (busy poll). PTY sim: poll(2).
-  // Tests: jumps virtual time to the next scheduled event; the ONLY place
-  // time passes in tests.
+  // early, never late.
   virtual void idleUntil(Deadline d) = 0;
 
   // (Re)configure. Resets the health counters. A call that changes only the

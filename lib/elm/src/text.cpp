@@ -8,8 +8,6 @@ static int hexValue(char c) {
   return -1;
 }
 
-// ------------------------------------------------------------------- input
-
 void LineBuffer::push(uint8_t raw) {
   if (raw == ' ' || raw < 0x20) return;
   if (raw >= 0x7F || len_ >= kLineMax) {
@@ -48,8 +46,6 @@ bool parseHexRequest(const char *line, bool caf, HexRequest *out) {
   out->len = bytes;
   return true;
 }
-
-// ------------------------------------------------------------------ output
 
 namespace {
 

@@ -4,7 +4,6 @@
 
 namespace {
 
-// Builds one human-readable line for AT#SURVEY / AT#SELFTEST.
 class Line {
  public:
   Line &text(const char *s) {
@@ -283,8 +282,6 @@ void Elm::selfTest() {
       print(line.str());
     }
   }
-  // One round-tripping rate proves the SPI and frame path, as the probe's
-  // stage 2 did; a single bad bit-timing entry must not fail the whole test.
   print(passed > 0 ? "SELFTEST: PASS" : "SELFTEST: FAIL");
 }
 

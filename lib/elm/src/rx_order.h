@@ -2,8 +2,7 @@
 //
 // With BUKT rollover a frame goes to RXB0, or to RXB1 when RXB0 is full. So
 // after RXB0 is read, a full RXB1 holds a frame older than anything that can
-// land in RXB0 from then on, and must be read next. Shared by Mcp2515Hal and
-// the simulated bus so the native tests exercise the firmware's ordering.
+// land in RXB0 from then on, and must be read next.
 
 #ifndef ELM_RX_ORDER_H
 #define ELM_RX_ORDER_H

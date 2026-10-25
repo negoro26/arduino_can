@@ -1,22 +1,11 @@
-// The ELM text grammar, both directions.
-//
-// Input: raw serial bytes -> one normalized command line -> HexRequest.
-// Output: CanFrame + Settings -> response lines.
-// Nothing here touches a Hal; everything is unit-tested on strings.
-
 #ifndef ELM_TEXT_H
 #define ELM_TEXT_H
 
 #include "can_types.h"
 #include "settings.h"
 
-// ------------------------------------------------------------------- input
+constexpr uint8_t kLineMax = 64;
 
-constexpr uint8_t kLineMax = 64;  // normalized chars; longest real use ~25
-
-// Accumulates one command line the way the ELM reads it: uppercased, spaces
-// and control characters dropped. Echo is NOT done here: Elm echoes the raw
-// byte before pushing it.
 class LineBuffer {
  public:
   // Precondition: raw != '\r' and raw != '\n' (Elm handles those).
@@ -26,9 +15,9 @@ class LineBuffer {
   //   beyond kLineMax  -> line becomes invalid
   void push(uint8_t raw);
   void clear();
-  bool blank() const { return len_ == 0 && !invalid_; }  // bare CR -> repeat
+  bool blank() const { return len_ == 0 && !invalid_; }
   bool valid() const { return !invalid_; }
-  const char *text() const { return buf_; }  // NUL-terminated, normalized
+  const char *text() const { return buf_; }
 
  private:
   char buf_[kLineMax + 1] = {};
@@ -36,21 +25,18 @@ class LineBuffer {
   bool invalid_ = false;
 };
 
-// A validated CAN request line.
 struct HexRequest {
   uint8_t bytes[8];
   uint8_t len;          // CAF1: 1..7 (PCI added later); CAF0: 1..8
-  int8_t maxResponses;  // trailing odd hex digit 0..F; -1 = none
+  int8_t maxResponses;
 };
 
 // false -> print "?". Hex digits only; an odd count means the last digit is
 // the response count; byte count within the CAF limit above.
 bool parseHexRequest(const char *line, bool caf, HexRequest *out);
 
-// ------------------------------------------------------------------ output
-
 struct TextLine {
-  char text[48];  // longest: "18 DA F1 10 8 10 14 62 F1 90 55 55 31" = 37
+  char text[48];
   uint8_t len;
 };
 
@@ -89,7 +75,7 @@ class FrameFormatter {
   uint8_t remainingCount_ = 0;
 };
 
-const char *lineEnd(const Settings &s);  // "\r" or "\r\n"
+const char *lineEnd(const Settings &s);
 
 // "ISO 15765-4 (CAN 11/500)" ... ; nullptr for Protocol::None.
 const char *protocolName(Protocol p);

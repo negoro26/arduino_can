@@ -81,8 +81,6 @@ void PtyHal::write(const char *bytes, uint16_t length) {
       continue;
     }
     if (n < 0 && errno != EAGAIN && errno != EINTR) return;
-    // The client is not reading (or has gone): give it a second, then drop
-    // the rest rather than freeze the simulator.
     pollfd p{master_, POLLOUT, 0};
     if (poll(&p, 1, 1000) <= 0) return;
   }

@@ -1,21 +1,11 @@
-// Virtual ECUs, a virtual car and the simulated wire. MCU-portable.
-//
 // No heap, no STL, no exceptions: the same code runs in the PTY simulator, in
-// the native tests and in the loopback demo firmware. An ECU is const data
-// (flash on the SAMD21) plus ~100 bytes of runtime state.
-//
-// Time is passed in, in microseconds (consecutive frames are ~230 us apart at
-// 500 kbit). Comparisons are wrap-safe int32 differences, valid for schedules
-// shorter than 35 minutes.
+// the native tests and in the loopback demo firmware.
 
 #ifndef VECU_H
 #define VECU_H
 
 #include "can_types.h"
 
-// --------------------------------------------------------------- one ECU
-
-// One canned exchange. Pointers refer to const data.
 struct Exchange {
   const uint8_t *request;   // matched as a PREFIX of the reassembled request
   uint8_t requestLen;
@@ -25,9 +15,9 @@ struct Exchange {
 };
 
 struct EcuSpec {
-  const char *name;           // "ECM", "UCH", ...
+  const char *name;
   CanId physical;             // request id it listens on, e.g. 7E0
-  CanId reply;                // id it answers on, e.g. 7E8
+  CanId reply;
   bool obdFunctional;         // also answers OBD-II services on 11-bit 7DF
   const Exchange *exchanges;  // first prefix match wins
   uint8_t exchangeCount;
@@ -43,7 +33,6 @@ struct EcuSpec {
 class VirtualEcu {
  public:
   void bind(const EcuSpec *spec, Bitrate busRate);
-  // A frame some other node put on the wire.
   void deliver(const CanFrame &f, uint32_t nowUs);
   // The frame this ECU transmits now, if one is due at or before nowUs. May
   // return false after a due timeout that produces no frame.
@@ -64,20 +53,17 @@ class VirtualEcu {
   Phase phase_ = Phase::Idle;
   uint32_t dueUs_ = 0;
   bool functional_ = false;
-  uint8_t req_[64] = {};  // request being reassembled
+  uint8_t req_[64] = {};
   uint16_t reqLen_ = 0, reqExpected_ = 0;
   uint8_t reqSeq_ = 0;
-  const uint8_t *tx_ = nullptr;  // answer being sent (flash, or nrc_ below)
+  const uint8_t *tx_ = nullptr;
   uint16_t txLen_ = 0, txSent_ = 0;
   uint8_t txSeq_ = 0, blockSize_ = 0, blockLeft_ = 0;
   uint32_t stMinUs_ = 0;
   uint16_t pendingMs_ = 0;
-  uint8_t nrc_[3] = {};  // 7F sid nn
+  uint8_t nrc_[3] = {};
 };
 
-// ------------------------------------------------------------ a whole car
-
-// Background traffic, so filters, listen-before-talk and ATMA see a live bus.
 struct Periodic {
   CanFrame frame;
   uint16_t periodMs;
@@ -85,10 +71,10 @@ struct Periodic {
 
 struct CarSpec {
   const EcuSpec *ecus;
-  uint8_t ecuCount;       // <= VirtualCar::kMaxEcus
+  uint8_t ecuCount;
   const Periodic *traffic;
-  uint8_t trafficCount;   // <= VirtualCar::kMaxTraffic
-  Bitrate bitrate;        // the rate the car's bus runs at
+  uint8_t trafficCount;
+  Bitrate bitrate;
 };
 
 class VirtualCar {
@@ -98,13 +84,10 @@ class VirtualCar {
 
   explicit VirtualCar(const CarSpec &spec);
   Bitrate bitrate() const { return spec_.bitrate; }
-  // A frame the adapter put on the wire: offered to every ECU.
   void deliver(const CanFrame &f, uint32_t nowUs);
   // Earliest-due frame from any ECU or periodic source, if due <= nowUs.
   bool poll(uint32_t nowUs, CanFrame *out);
   bool nextDue(uint32_t *atUs) const;
-  // True for ids the car transmits (ECU reply ids, periodic ids). The loopback
-  // demo uses it to tell the car's frames from echoes of the adapter's own.
   bool transmits(CanId id) const;
 
  private:
@@ -112,8 +95,6 @@ class VirtualCar {
   VirtualEcu ecus_[kMaxEcus];
   uint32_t nextPeriodicUs_[kMaxTraffic] = {};
 };
-
-// ------------------------------------------------------- the wire, hosted
 
 // The bus as seen through a controller: bitrate, mode, acceptance, RX slots.
 //   rate != car rate : nothing is received; every car frame on the wire adds
@@ -136,7 +117,6 @@ class SimBus {
   bool open(Bitrate rate, CanMode mode, const Acceptance &acc, uint32_t nowUs);
   void close(uint32_t nowUs);
   TxStatus send(const CanFrame &f, uint32_t nowUs);
-  // Moves every car frame due by nowUs onto the wire.
   void advance(uint32_t nowUs);
   // kRxb0Full | kRxb1Full after advancing to nowUs (FIFO: kRxb0Full = any).
   uint8_t rxStatus(uint32_t nowUs);
@@ -151,8 +131,8 @@ class SimBus {
   VirtualCar &car_;
   uint8_t rxSlots_;
   CanFrame slots_[kMaxSlots];
-  bool rxbFull_[2] = {false, false};  // two-buffer model: slots_[0], slots_[1]
-  uint8_t head_ = 0, used_ = 0;       // FIFO model
+  bool rxbFull_[2] = {false, false};
+  uint8_t head_ = 0, used_ = 0;
   bool open_ = false;
   Bitrate rate_ = Bitrate::k500;
   CanMode mode_ = CanMode::ListenOnly;

@@ -72,8 +72,6 @@ void Mcp2515Hal::begin() {
   canClose();
 }
 
-// ------------------------------------------------------------ serial, clock
-
 int Mcp2515Hal::readByte() { return Serial.available() > 0 ? Serial.read() : -1; }
 
 void Mcp2515Hal::write(const char *bytes, uint16_t length) {
@@ -83,8 +81,6 @@ void Mcp2515Hal::write(const char *bytes, uint16_t length) {
 uint32_t Mcp2515Hal::nowMs() { return millis(); }
 
 void Mcp2515Hal::idleUntil(Deadline) {}
-
-// ------------------------------------------------------------------ raw SPI
 
 uint8_t Mcp2515Hal::rawRead(uint8_t reg) {
   SPI.beginTransaction(kSpi);
@@ -127,8 +123,6 @@ bool Mcp2515Hal::setMode(uint8_t reqop) {
   // One-shot is a safety property, so it is read back rather than assumed.
   return (rawRead(kRegCanctrl) & kCtrlOsm) == (reqop & kCtrlOsm);
 }
-
-// ---------------------------------------------------------------------- CAN
 
 bool Mcp2515Hal::configure(Bitrate rate, const Acceptance &acc) {
   if (mcp_.reset() != MCP2515::ERROR_OK) return false;

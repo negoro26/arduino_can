@@ -13,23 +13,18 @@
 
 #include "can_types.h"
 
-// Ordered: a frame is admitted iff its tier <= the guard tier.
 enum class Tier : uint8_t { Read = 0, Clear = 1, Write = 2 };
 
-const char *tierName(Tier t);                 // "READ" / "CLEAR" / "WRITE"
+const char *tierName(Tier t);
 bool parseTier(const char *word, Tier *out);  // exact, already uppercased
 
-// Default-deny policy: anything not listed as READ or CLEAR is WRITE.
-//   Read : 01 02 03 05 06 07 09 0A; 10 except sub 02/82/85; 12 17 18 19 1A
-//          20 21 22 23 24 3E 81 82 83
-//   Clear: 04, 14
 Tier tierOfService(uint8_t sid, bool hasSub, uint8_t sub);
 
 // Proof that a frame passed the guard. Non-copyable so it is used where it is
 // made (admit -> canSend) rather than cached and replayed after the tier drops.
 class ClearedFrame {
  public:
-  ClearedFrame() = default;  // empty: every adapter refuses to send it
+  ClearedFrame() = default;
   ClearedFrame(const ClearedFrame &) = delete;
   ClearedFrame &operator=(const ClearedFrame &) = delete;
 
@@ -49,13 +44,6 @@ class Guard {
   Tier tier() const { return tier_; }
   void setTier(Tier t) { tier_ = t; }
 
-  // Tier of one wire frame:
-  //   PCI 3x (flow control) -> Read (always admitted)
-  //   PCI 0x (single frame) -> tierOfService(data[1], len >= 2, data[2])
-  //   PCI 1x (first frame)  -> tierOfService(data[2], true, data[3])
-  //   PCI 2x (consecutive)  -> the tier of the last first frame on the same
-  //                            id, else Write (no first frame -> deny)
-  //   anything else         -> Write
   Tier classify(const CanFrame &f) const;
   bool permits(const CanFrame &f) const { return classify(f) <= tier_; }
 
@@ -66,7 +54,7 @@ class Guard {
   bool admit(const CanFrame &f, ClearedFrame *out);
 
  private:
-  Tier tier_ = Tier::Read;  // power-up default
+  Tier tier_ = Tier::Read;
   CanId lastFirstId_;
   Tier lastFirstTier_ = Tier::Write;
   bool haveFirst_ = false;
