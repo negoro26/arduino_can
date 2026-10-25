@@ -34,7 +34,8 @@ except ImportError:
     OBD_DESCRIPTIONS = {}
 
 # Source: ddt4all src/ddt4all/resources/projects.json (projects.All dnat/snat/addressing),
-# commit e7b582257e156f1cf2956831874c26305403c9b9. (request id, response id, module names)
+# commit e7b582257e156f1cf2956831874c26305403c9b9. (request id, response id, module names;
+# the names of 29-bit variants that share an 11-bit id pair are left out)
 RENAULT_ECUS = [
     (0x605, 0x585, "Nav4 / Tel"),
     (0x607, 0x587, "CCGW"),
@@ -60,7 +61,7 @@ RENAULT_ECUS = [
     (0x70A, 0x72A, "PPS"),
     (0x70B, 0x72B, "DDR"),
     (0x70C, 0x700, "IDM-CDM"),
-    (0x70E, 0x70F, "EBA / E-ACT-EBA_29b"),
+    (0x70E, 0x70F, "EBA"),
     (0x710, 0x730, "GW"),
     (0x711, 0x701, "Nav2 / SOUND (AMP) / ASBM"),
     (0x711, 0x731, "Additional Heater"),
@@ -77,20 +78,20 @@ RENAULT_ECUS = [
     (0x73A, 0x4A7, "HMI Gateway"),
     (0x73D, 0x73E, "SOW Rear Left"),
     (0x73F, 0x761, "IPA / VSP"),
-    (0x740, 0x760, "ABS-VDC / ABS-VDC_29b"),
+    (0x740, 0x760, "ABS-VDC"),
     (0x742, 0x762, "EPS"),
     (0x742, 0x771, "ODS"),
     (0x743, 0x763, "TDB"),
     (0x744, 0x764, "HVAC"),
     (0x745, 0x765, "UCH"),
-    (0x746, 0x726, "SCCM / SCCM_29"),
+    (0x746, 0x726, "SCCM"),
     (0x746, 0x783, "DCM Nissan"),
     (0x747, 0x767, "Navigation-UCC-ITM"),
     (0x748, 0x768, "4WD"),
     (0x749, 0x74A, "ANC"),
     (0x74B, 0x76B, "TCU"),
     (0x74C, 0x76C, "Renault RemoteEntry"),
-    (0x74D, 0x76D, "UPC-EMM / USM_29"),
+    (0x74D, 0x76D, "UPC-EMM"),
     (0x74E, 0x76E, "Parking Sonar"),
     (0x74F, 0x757, "Intelligent Bat Sensor"),
     (0x74F, 0x76F, "ADP"),
@@ -100,7 +101,7 @@ RENAULT_ECUS = [
     (0x753, 0x773, "4WS"),
     (0x754, 0x774, "PSB DR"),
     (0x755, 0x775, "APB"),
-    (0x756, 0x776, "Superviseur-DCDC / DC-DC Conv / Superviseur-DCDC_29b"),
+    (0x756, 0x776, "Superviseur-DCDC / DC-DC Conv"),
     (0x758, 0x778, "TPMS"),
     (0x759, 0x779, "eRDCL - ASDL / ASD-L"),
     (0x75A, 0x77E, "PEB"),
@@ -115,9 +116,9 @@ RENAULT_ECUS = [
     (0x78A, 0x7D7, "CSHV Airbag Vehicle stopped"),
     (0x78B, 0x7AB, "AFBCU"),
     (0x790, 0x791, "EMCU"),
-    (0x792, 0x793, "BCB / BCB-OBC_29b"),
+    (0x792, 0x793, "BCB"),
     (0x795, 0x7B5, "BSW"),
-    (0x796, 0x7B6, "LBC2 / LBC2_29b"),
+    (0x796, 0x7B6, "LBC2"),
     (0x797, 0x79A, "VCM"),
     (0x798, 0x794, "ST1"),
     (0x799, 0x7B9, "HFM"),
@@ -143,13 +144,13 @@ RENAULT_ECUS = [
     (0x7D8, 0x7C8, "PLC-PLGW"),
     (0x7D9, 0x7DB, "PTC AMP"),
     (0x7DC, 0x7DD, "SMB / FCAM"),
-    (0x7E0, 0x7E8, "ECM_29 / ECM"),
-    (0x7E1, 0x7E9, "AT_29b / AT"),
+    (0x7E0, 0x7E8, "ECM"),
+    (0x7E1, 0x7E9, "AT"),
     (0x7E2, 0x7EA, "LNG"),
     (0x7E3, 0x7EB, "MC HEV / Fuel System CMG4"),
-    (0x7E4, 0x7EC, "Selective Catalytic Reduction / (H) EVC / (H) EVC-HCM-VCM_29b"),
-    (0x7E5, 0x7ED, "Common Powertrain / LBC (HEV) / LBC (HEV)_29b"),
-    (0x7E6, 0x7EE, "UDM / UDM_29b"),
+    (0x7E4, 0x7EC, "Selective Catalytic Reduction / (H) EVC"),
+    (0x7E5, 0x7ED, "Common Powertrain / LBC (HEV)"),
+    (0x7E6, 0x7EE, "UDM"),
 ]
 
 BAUD = 38400
@@ -604,8 +605,9 @@ def identify(elm: Elm, rx: int, dialect: Dialect, ecu: EcuResult) -> None:
     if dialect is UDS:
         for did, label in UDS_IDENT:
             _, answer = ask(elm, "22" + did, rx, ecu.notes)
-            if answer is not None and answer[:3] == bytes.fromhex("62" + did):
-                ecu.ident[label] = text_or_hex(answer[3:])
+            if answer is not None and answer[:3] == bytes.fromhex("62" + did) and len(answer) > 3:
+                # The diagnostic version is a number (ddt4all matches it as an int), not text.
+                ecu.ident[label] = str(answer[3]) if did == "F1A0" else text_or_hex(answer[3:])
         return
     _, answer = ask(elm, "2180", rx, ecu.notes)
     if answer is not None and answer[:2] == b"\x61\x80":
