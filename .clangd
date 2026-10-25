@@ -33,12 +33,15 @@ Diagnostics:
 ---
 # Test files are NOT in compile_commands.json: `pio run -t compiledb` only
 # describes the firmware build, and these are host tests built by
-# `pio test -e native`. Without the two include paths below clangd cannot find
-# unity.h, every TEST_ASSERT_* becomes an unknown symbol, and the file is too
-# broken for completion or code actions to work at all.
+# `pio test -e native`. Without the include paths below clangd cannot find
+# unity.h or the core, every TEST_ASSERT_* becomes an unknown symbol, and the
+# file is too broken for completion or code actions to work at all.
 If:
   PathMatch: test/.*
 CompileFlags:
   Add:
+    - -std=c++17
     - -I.pio/libdeps/native/Unity/src
-    - -Isrc
+    - -Ilib/elm/src
+    - -Ilib/vecu/src
+    - -Itest/support
