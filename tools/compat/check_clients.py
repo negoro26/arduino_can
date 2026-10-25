@@ -11,8 +11,14 @@ our scanner, against the virtual Renault/Dacia car. The car is served either by 
 simulator (`--sim`, started and stopped here) or by the board running the loopback demo
 firmware (`--port`).
 
+Over TCP (`--sim ... --tcp`, or `--port socket://HOST:PORT` for the board's WiFi) every client
+opens the adapter the way it opens a WiFi ELM327: python-OBD, canscan and the raw checks as
+`socket://HOST:PORT`, ddt4all (WiFi adapter type) and pyren as `HOST:PORT`.
+
     uv run tools/compat/check_clients.py --sim .pio/build/sim/program
+    uv run tools/compat/check_clients.py --sim .pio/build/sim/program --tcp
     uv run tools/compat/check_clients.py --port /dev/ttyACM0 --only guard,bitrate
+    uv run tools/compat/check_clients.py --port socket://192.168.0.10:35000
     uv run tools/compat/check_clients.py --self-check     # fetch and import the clients only
 
 Client sources are cached in ~/.cache/arduino_can_compat/, client output goes to its logs/
@@ -29,6 +35,7 @@ import re
 import select
 import shutil
 import signal
+import socket
 import subprocess
 import sys
 import tempfile
@@ -52,7 +59,10 @@ GIT_TIMEOUT = 300.0
 RAW_TIMEOUT = 10.0
 QUIET_TIME = 0.5
 
-CHECKS = ("python-obd", "ddt4all", "pyren", "guard", "bitrate", "canscan")
+SOCKET = "socket://"
+
+CHECKS = ("python-obd", "ddt4all", "pyren", "guard", "guard-tcp", "bitrate", "canscan")
+TCP_ONLY = ("guard-tcp",)
 CLIENTS = ("python-obd", "ddt4all", "pyren")
 
 
@@ -403,7 +413,7 @@ def client_ddt4all(plan: dict, record: Callable[[str, object], None]) -> None:
         (Path(get_logs_dir()) / f"{kind}_compat.txt").unlink(missing_ok=True)
     record("wire log", str(Path(get_logs_dir()) / "elm_compat.txt"))
 
-    elm = ELM(plan["port"], 38400, "STD_USB")
+    elm = ELM(plan["port"], 38400, "STD_WIFI" if plan["tcp"] else "STD_USB")
     options.elm = elm
     record("connect", elm.connectionStatus)
     if not elm.connectionStatus:
@@ -559,6 +569,16 @@ def check_guard(port: str, results: Results) -> None:
         results.check("guard back at READ", ["READ"], elm.send("AT#GUARD"))
 
 
+def check_guard_tcp(port: str, results: Results) -> None:
+    with Adapter(port) as elm:
+        elm.setup("ATE0", "AT#GUARD READ")
+        try:
+            results.check("guard WRITE refused over TCP: AT#GUARD WRITE", ["?"], elm.send("AT#GUARD WRITE"))
+            results.check("guard WRITE refused over TCP: AT#GUARD still READ", ["READ"], elm.send("AT#GUARD"))
+        finally:
+            elm.send("AT#GUARD READ")
+
+
 def check_bitrate(port: str, results: Results) -> None:
     with Adapter(port) as elm:
         elm.setup("ATE0", "ATS0", "ATCAF0", "ATSH745", "AT SP 8", "ATCRA765")
@@ -595,9 +615,16 @@ def finish_client(name: str, recorded: dict, problem: str, ok: bool, results: Re
         client_logs(name, recorded)
 
 
+def tcp_address(port: str) -> Optional[str]:
+    """`HOST:PORT` of a `socket://HOST:PORT` port, the form ddt4all and pyren take for WiFi; None for serial."""
+    return port[len(SOCKET):] if port.startswith(SOCKET) else None
+
+
 def check_ecu_client(name: str, ecus: tuple[Ecu, ...]) -> Callable[[str, Results, dict], None]:
     def run(port: str, results: Results, sources: dict) -> None:
-        plan = {"port": port, "source": str(sources[name]), "ecus": [ecu.plan() for ecu in ecus]}
+        address = tcp_address(port)
+        plan = {"port": address or port, "tcp": address is not None, "source": str(sources[name]),
+                "ecus": [ecu.plan() for ecu in ecus]}
         recorded, problem = run_client(name, plan)
         finish_client(name, recorded, problem, compare_ecus(name, ecus, recorded, results), results)
     return run
@@ -652,6 +679,7 @@ RUNNERS: dict[str, Callable[[str, Results, dict], None]] = {
     "ddt4all": check_ecu_client("ddt4all", DDT4ALL_ECUS),
     "pyren": check_ecu_client("pyren", PYREN_ECUS),
     "guard": raw_check("guard", check_guard),
+    "guard-tcp": raw_check("guard-tcp", check_guard_tcp),
     "bitrate": raw_check("bitrate", check_bitrate),
     "canscan": check_canscan,
 }
@@ -694,6 +722,12 @@ class SimulatorError(Exception):
     pass
 
 
+def free_tcp_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
 def wait_ready(proc: subprocess.Popen, timeout: float) -> str:
     fd = proc.stdout.fileno()
     buf = b""
@@ -713,22 +747,35 @@ def wait_ready(proc: subprocess.Popen, timeout: float) -> str:
     return line[len("ready "):].strip()
 
 
+def ready_port(ready: str, tcp: bool) -> str:
+    """The port to check from the ready line's `PATH`, or `PATH tcp HOST:PORT` with --tcp."""
+    if not tcp:
+        return ready
+    _, sep, address = ready.rpartition(" tcp ")
+    if not sep or not address.strip():
+        raise SimulatorError(f"ready line {'ready ' + ready!r} has no 'tcp HOST:PORT'")
+    return SOCKET + address.strip()
+
+
 @contextlib.contextmanager
-def simulator(binary: str) -> Iterator[tuple[str, Callable[[], str]]]:
+def simulator(binary: str, tcp: bool) -> Iterator[tuple[str, Callable[[], str]]]:
     link = Path(tempfile.gettempdir()) / f"elm327-compat-{os.getpid()}"
+    cmd = [binary, "--link", str(link)]
+    if tcp:
+        cmd += ["--tcp", f"127.0.0.1:{free_tcp_port()}"]
     try:
-        proc = subprocess.Popen([binary, "--link", str(link)], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
+        proc = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE)
     except OSError as exc:
         raise SimulatorError(str(exc)) from exc
     try:
-        path = wait_ready(proc, SIM_READY_TIMEOUT)
+        port = ready_port(wait_ready(proc, SIM_READY_TIMEOUT), tcp)
         threading.Thread(target=shutil.copyfileobj, args=(proc.stdout, open(os.devnull, "wb")), daemon=True).start()
 
         def problem() -> str:
             status = proc.poll()
             return "" if status is None else f"simulator exited with status {status}"
 
-        yield path, problem
+        yield port, problem
     finally:
         if proc.poll() is None:
             proc.terminate()
@@ -751,16 +798,27 @@ def parse_args(argv: Optional[list[str]]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
                                      epilog="exit status: 0 every check passed, 1 otherwise")
     where = parser.add_mutually_exclusive_group()
-    where.add_argument("--port", help="serial port of a device serving the virtual car, e.g. /dev/ttyACM0")
+    where.add_argument("--port", help="serial port of a device serving the virtual car, e.g. /dev/ttyACM0, "
+                                      "or its WiFi as socket://HOST:PORT, e.g. socket://192.168.0.10:35000")
     where.add_argument("--sim", metavar="PROGRAM", help="simulator binary to start, e.g. .pio/build/sim/program")
     where.add_argument("--self-check", action="store_true",
                        help="only fetch and import the three clients and print their versions")
-    parser.add_argument("--only", type=check_list, default=list(CHECKS), metavar="CHECKS",
-                        help=f"comma-separated subset of {','.join(CHECKS)} (default: all)")
+    parser.add_argument("--tcp", action="store_true",
+                        help="with --sim: also serve the car on a local TCP port and run every check over TCP")
+    parser.add_argument("--only", type=check_list, metavar="CHECKS",
+                        help=f"comma-separated subset of {','.join(CHECKS)} "
+                             f"(default: all; {','.join(TCP_ONLY)} only over TCP)")
     parser.add_argument("--client", nargs=3, metavar=("NAME", "PLAN", "OUT"), help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
     if not (args.client or args.self_check or args.port or args.sim):
         parser.error("one of --port, --sim or --self-check is required")
+    if args.tcp and not args.sim:
+        parser.error("--tcp needs --sim; for a board over WiFi use --port socket://HOST:PORT")
+    tcp = args.tcp or (args.port or "").startswith(SOCKET)
+    if args.only is None:
+        args.only = [name for name in CHECKS if tcp or name not in TCP_ONLY]
+    elif not tcp and set(TCP_ONLY) & set(args.only):
+        parser.error(f"{','.join(TCP_ONLY)} runs only over TCP (--sim PROGRAM --tcp or --port socket://HOST:PORT)")
     return args
 
 
@@ -779,10 +837,12 @@ def main(argv: Optional[list[str]] = None) -> int:
         run_checks(args.port, args.only, sources, results, lambda: "")
         return results.summary()
     try:
-        with simulator(args.sim) as (port, problem):
+        with simulator(args.sim, args.tcp) as (port, problem):
             run_checks(port, args.only, sources, results, problem)
     except SimulatorError as exc:
-        results.fail("simulator", f"'ready PATH' from {args.sim} --link ...", str(exc))
+        expected = ("'ready PATH tcp HOST:PORT' from {} --link ... --tcp ..." if args.tcp
+                    else "'ready PATH' from {} --link ...")
+        results.fail("simulator", expected.format(args.sim), str(exc))
     return results.summary()
 
 
