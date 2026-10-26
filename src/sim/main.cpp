@@ -17,7 +17,9 @@ void removeLinkAndExit(int) {
 }
 
 int usage(const char *program) {
-  fprintf(stderr, "usage: %s [--link PATH] [--car-bitrate 500|250] [--quiet]\n",
+  fprintf(stderr,
+          "usage: %s [--link PATH] [--tcp HOST:PORT] [--car-bitrate 500|250] "
+          "[--quiet]\n",
           program);
   return 2;
 }
@@ -27,9 +29,12 @@ int usage(const char *program) {
 int main(int argc, char **argv) {
   Bitrate rate = Bitrate::k500;
   bool quiet = false;
+  const char *tcp = nullptr;
   for (int i = 1; i < argc; ++i) {
     if (strcmp(argv[i], "--link") == 0 && i + 1 < argc) {
       g_link = argv[++i];
+    } else if (strcmp(argv[i], "--tcp") == 0 && i + 1 < argc) {
+      tcp = argv[++i];
     } else if (strcmp(argv[i], "--car-bitrate") == 0 && i + 1 < argc) {
       const char *value = argv[++i];
       if (strcmp(value, "500") == 0) {
@@ -48,6 +53,7 @@ int main(int argc, char **argv) {
 
   static PtyHal hal(quiet ? renaultDaciaCarQuiet(rate) : renaultDaciaCar(rate),
                     g_link);
+  if (tcp != nullptr && !hal.listen(tcp)) return 1;
   if (!hal.open()) return 1;
   struct sigaction sa;
   memset(&sa, 0, sizeof sa);
@@ -57,10 +63,15 @@ int main(int argc, char **argv) {
 
   static Elm elm(hal);
   elm.begin();
-  printf("ready %s\n", g_link);
+  if (tcp != nullptr) {
+    printf("ready %s tcp %s\n", g_link, tcp);
+  } else {
+    printf("ready %s\n", g_link);
+  }
   fflush(stdout);
   for (;;) {
     hal.waitForInput();
+    hal.pollLinks();
     elm.service();
   }
 }

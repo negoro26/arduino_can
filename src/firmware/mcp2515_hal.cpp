@@ -58,7 +58,7 @@ const SPISettings kSpi(kSpiHz, MSBFIRST, SPI_MODE0);
 
 }  // namespace
 
-Mcp2515Hal::Mcp2515Hal() : mcp_(kPinCs, kSpiHz, &SPI) {}
+Mcp2515Hal::Mcp2515Hal() : mcp_(kPinCs, kSpiHz, &SPI), links_(usb_, wifi_) {}
 
 void Mcp2515Hal::begin() {
   Serial.begin(115200);  // native USB: the rate is ignored
@@ -67,12 +67,37 @@ void Mcp2515Hal::begin() {
   SPI.begin();
   mcp_.reset();
   canClose();
+  wifi_.begin();
 }
 
-int Mcp2515Hal::readByte() { return Serial.available() > 0 ? Serial.read() : -1; }
+void Mcp2515Hal::pollLinks() { links_.poll(millis()); }
+
+uint16_t Mcp2515Hal::Usb::read(uint8_t *out, uint16_t capacity) {
+  uint16_t n = 0;
+  while (n < capacity && Serial.available() > 0) {
+    out[n++] = static_cast<uint8_t>(Serial.read());
+  }
+  return n;
+}
+
+void Mcp2515Hal::Usb::write(const char *bytes, uint16_t length) {
+  Serial.write(reinterpret_cast<const uint8_t *>(bytes), length);
+}
+
+int Mcp2515Hal::readByte() { return links_.readByte(); }
 
 void Mcp2515Hal::write(const char *bytes, uint16_t length) {
-  Serial.write(reinterpret_cast<const uint8_t *>(bytes), length);
+  links_.write(bytes, length, millis());
+}
+
+void Mcp2515Hal::flush() { links_.flush(); }
+
+bool Mcp2515Hal::linkTrusted() { return !links_.onTcp(); }
+
+uint8_t Mcp2515Hal::linkSwitches() { return links_.switches(); }
+
+bool Mcp2515Hal::wifiStatus(uint8_t index, char *out, uint8_t capacity) {
+  return wifi_.statusLine(index, out, capacity);
 }
 
 uint32_t Mcp2515Hal::nowMs() { return millis(); }

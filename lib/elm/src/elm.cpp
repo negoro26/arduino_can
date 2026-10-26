@@ -56,6 +56,17 @@ void Elm::begin() {
 }
 
 void Elm::service() {
+  const uint8_t switches = hal_.linkSwitches();
+  if (switches != linkSwitches_) {
+    linkSwitches_ = switches;
+    line_.clear();
+    last_[0] = '\0';
+    // WRITE unlocked over USB must not pass to whoever joins the WiFi next,
+    // for example after the laptop is unplugged from a board on pin 16.
+    if (!hal_.linkTrusted() && guard_.tier() == Tier::Write) {
+      guard_.setTier(Tier::Read);
+    }
+  }
   for (int c; (c = hal_.readByte()) >= 0;) onByte(static_cast<uint8_t>(c));
 }
 
@@ -166,6 +177,7 @@ void Elm::monitor() {
     if (w == Wake::Interrupted) break;
     if (w == Wake::Timeout) {
       hal_.write(batch, static_cast<uint16_t>(used));
+      hal_.flush();
       used = 0;
       flushAt = Deadline::never();
       continue;

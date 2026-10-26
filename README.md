@@ -52,7 +52,7 @@ The OBD2 connector pinout (SAE J1962) is fixed by the standard, so check an untr
 | 14 | CAN-L | `CANL` |
 | 4 or 5 | GND | `GND` |
 
-Do **not** connect pin 16 (+12 V). The board runs from USB.
+With a laptop, leave pin 16 (+12 V) unconnected. The board runs from USB. To run it from the car instead, read [Power it without a laptop](#power-it-without-a-laptop).
 
 ### What a miswire can damage
 
@@ -128,6 +128,51 @@ To clear codes, add `--clear`. After the report the scanner lists what it will c
 
 The firmware answers `?` to `AT BRD` (USB has no baud rate). That is why ddt4all's UART speed must stay at **No**.
 
+## Use a phone over WiFi
+
+The MKR1000's WiFi chip (WINC1500) runs an access point that behaves like a WiFi ELM327 dongle:
+
+| Setting | Value |
+|---|---|
+| Network | `MKR-OBDII`, WPA/WPA2 |
+| Password | `obd2mkr1000` |
+| Adapter address | `192.168.0.10`, TCP port `35000` |
+
+1. Join `MKR-OBDII` on the phone. The phone warns that the network has no internet. Stay connected.
+2. In the app, choose a WiFi ELM327 adapter. Car Scanner, Torque and OBD Auto Doctor use `192.168.0.10:35000` by default.
+3. Connect.
+
+- One phone at a time. The WINC1500 accepts a single station.
+- While a phone is connected, it owns the adapter and USB input waits. USB works again when the phone disconnects. When one side takes over from the other, a line the other left without its CR is dropped, and a bare CR does not repeat the other side's last request.
+- A phone that connects drops a `WRITE` tier back to `READ`. A `CLEAR` tier stays.
+- iPhone apps work over WiFi. They need the Local Network permission. iPhones cannot use the USB port.
+- `AT#WIFI` over USB prints the network, the WINC firmware version, and the connected phone's address.
+- Known limitation. The WiFi101 library retries a send into a full WiFi buffer with no timeout. If a phone app stops reading while the adapter streams `ATMA`, the adapter can stall, USB included, until the phone reads again or disconnects. This comes from reading the library source and has not been observed.
+- To change the network name or password, build with your own values. The name can have at most 32 characters and the password needs at least 8, or the build fails:
+
+```sh
+PLATFORMIO_BUILD_FLAGS='-D ELM_WIFI_SSID=\"My-OBD\" -D ELM_WIFI_PASSWORD=\"a-long-secret\"' pio run -t upload
+```
+
+The WINC1500's only password mode offers WPA and WPA2 together (a scan lists both). It has no WPA2-only setting. A WPA/WPA2 access point needs WINC firmware 19.5.2 or newer. This board has 19.6.1. If the access point cannot start, WiFi stays off, `AT#WIFI` says why, and USB keeps working. The adapter never falls back to an open network.
+
+On Android, a USB OTG cable also works with apps that accept CDC-ACM serial devices. AndrOBD lists the Arduino vendor id (0x2341). Torque Pro (FTDI and Prolific only) and OBD Fusion (FTDI only) do not. Car Scanner added USB adapters in v2.1.50, and it is not known whether it accepts this board.
+
+## Power it without a laptop
+
+The shield can power the MKR1000 by itself. Its own buck converter (TPS54232, `U3` in the schematic) turns the terminal's `VIN` input into about 5 V on the MKR1000's `VIN` pin. You do not need an external converter. Use one of these:
+
+- A USB power bank or a car USB charger in the MKR1000's micro-USB port.
+- OBD pin 16 (+12 V) to the `VIN` position and pin 4 or 5 to `GND`. The terminal is rated 7-24 V, and a running car (12-14.4 V) is inside that range. Nothing else is required. The laptop can stay on USB for data at the same time.
+
+The schematic shows nothing on the `VIN` input except a 10 uF capacitor (`C9`). There is no fuse, no reverse-polarity diode and no surge clamp, and the board works without them. These optional parts protect the board, not the car:
+
+- A series diode in the pin 16 wire, against `VIN` and `GND` being swapped. The mirrored bottom labels make that swap easy.
+- A TVS diode across `VIN` and `GND`, against an alternator load-dump spike. The buck converter's absolute maximum input is 30 V.
+- A 1 A inline fuse in the pin 16 wire, so a fault on the board blows that fuse and not the car's fuse for pin 16.
+
+Pin 16 is connected to the battery even with the ignition off. Unplug the adapter when you are done. The current the board draws with WiFi on has not been measured.
+
 ## Write guard
 
 Every frame the adapter transmits is classified by its diagnostic service before it reaches the bus. A frame above the current tier is not sent, and the adapter prints `BLOCKED` (ddt4all and pyren show that as an empty answer).
@@ -150,6 +195,8 @@ Listen-before-talk lasts only 60 ms. A slow periodic frame on a `6xx` id can fal
 - `AT#GUARD` prints the tier. `AT#GUARD READ`, `AT#GUARD CLEAR` and `AT#GUARD WRITE` set it.
 - The tier lives in RAM. ATZ, ATWS and ATD do not touch it. Unplugging the board resets it to `READ`.
 - To clear codes from ddt4all, open a terminal first, send `AT#GUARD CLEAR`, close the terminal, then connect ddt4all.
+- Over WiFi, `AT#GUARD WRITE` answers `?`. Only USB can unlock `WRITE`. `READ` and `CLEAR` work from both.
+- A phone that connects drops a `WRITE` tier back to `READ`, so a `WRITE` unlocked over USB never passes to a phone. This matters when the board stays powered from pin 16 after the laptop is unplugged. A `CLEAR` tier stays.
 - In raw mode (`ATCAF0`, which ddt4all and pyren use), the guard reads the service from the ISO-TP frame itself. A consecutive frame gets the verdict of the first frame before it.
 
 ## How the adapter behaves on the bus
@@ -162,13 +209,14 @@ Listen-before-talk lasts only 60 ms. A slow periodic frame on a `6xx` id can fal
 
 ## Commands
 
-The firmware implements the ELM327 AT commands that ddt4all, pyren and python-OBD send, plus the K-line parameter commands that their adapter checkers test (they answer `OK` and do nothing). Three commands are specific to this adapter:
+The firmware implements the ELM327 AT commands that ddt4all, pyren and python-OBD send, plus the K-line parameter commands that their adapter checkers test (they answer `OK` and do nothing). Four commands are specific to this adapter:
 
 | Command | Does |
 |---|---|
 | `AT#GUARD [READ\|CLEAR\|WRITE]` | prints or sets the write-guard tier |
 | `AT#SURVEY` | listen-only wiring check at 500, 250, 125 and 100 kbit |
 | `AT#SELFTEST` | MCP2515 presence check, then a loopback frame at each bitrate |
+| `AT#WIFI` | prints the WiFi access point state and the connected phone |
 
 Differences from a real ELM327:
 
@@ -186,26 +234,28 @@ Differences from a real ELM327:
 
 | Environment | Builds |
 |---|---|
-| `mkr1000USB` (default) | the adapter |
-| `mkr1000USB_demo` | the adapter plus a virtual Renault/Dacia car that answers through the MCP2515 in loopback mode. Use it to try the PC tools at a desk. |
+| `mkr1000USB` (default) | the adapter, with USB and the WiFi access point |
+| `mkr1000USB_demo` | the adapter plus a virtual Renault/Dacia car that answers through the MCP2515 in loopback mode. Use it to try the PC tools or a phone app at a desk. |
 | `native` | the host test suites |
-| `sim` | a PTY simulator of the same virtual car for real PC clients |
+| `sim` | a PTY (and optional TCP) simulator of the same virtual car for real PC clients |
 
 Code layout:
 
 - `lib/elm` is the portable ELM327 core. It has no Arduino dependency, no heap and no STL.
 - `lib/vecu` holds the virtual car: ISO-TP ECUs and a simulated bus that models the MCP2515's two receive buffers.
-- `src/firmware` holds the MCP2515 adapter, and `src/sim` holds the PTY host.
+- `src/firmware` holds the MCP2515 adapter and the WiFi link, and `src/sim` holds the PTY and TCP host.
+- `lib/elm/src/link_mux.*` decides which link (USB or a TCP client) owns the ELM session. The firmware and the simulator share it.
 
 ```sh
-pio test -e native                                         # 107 cases, no board, no car
-pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim
-uv run tools/compat/check_clients.py --sim .pio/build/sim/program
+pio test -e native                                         # 125 cases, no board, no car
+pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim [--tcp 127.0.0.1:35000]
+uv run tools/compat/check_clients.py --sim .pio/build/sim/program [--tcp]
 uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo
+uv run tools/compat/check_clients.py --port socket://192.168.0.10:35000   # same, over the board's WiFi
 uv run --with pytest --with pyserial pytest tools          # scanner decoders
 ```
 
-`tools/compat/check_clients.py` runs the real client code (ddt4all and pyren at pinned commits, python-OBD 0.7.3, and `canscan.py`) against the simulator or the demo board. It passes 80 of 80 checks on both.
+`tools/compat/check_clients.py` runs the real client code (ddt4all and pyren at pinned commits, python-OBD 0.7.3, and `canscan.py`) against the simulator or the demo board. It passes 80 of 80 checks over the simulator's PTY, 82 of 82 over the simulator's TCP port, and 80 of 80 over USB on the demo board. The run over the board's own WiFi has not been done yet.
 
 **Always pass `-e native` to `pio test`.** `default_envs` applies to `pio test` too. A bare `pio test` resolves to `mkr1000USB`, finds every suite ignored there, and reports `0 test cases` with exit status 0. Without that `test_ignore`, `pio test` would instead upload a Unity runner to the board and hang waiting for results.
 

@@ -17,7 +17,7 @@ constexpr uint16_t kInterruptLineRestMs = 100;
 
 // The ONLY blocking primitive. Order per iteration:
 //   1. a serial byte other than LF -> Interrupted (byte consumed and
-//                                     discarded, plus the rest of its line)
+//      or kLinkClosed                 discarded, plus the rest of its line)
 //   2. a CAN frame                 -> Frame (polled before the clock, so a
 //                                     frame at the deadline is not lost)
 //   3. deadline passed             -> Timeout

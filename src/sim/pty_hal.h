@@ -1,25 +1,42 @@
+// The simulator Hal: the virtual car on a simulated CAN bus, a PTY as the USB
+// port and, with --tcp, a TCP listener as the WiFi link, multiplexed by the
+// firmware's LinkMux.
+
 #ifndef PTY_HAL_H
 #define PTY_HAL_H
 
-#include <sys/types.h>
+#include <stdint.h>
 #include <time.h>
 
+#include "link_mux.h"
+#include "pty_link.h"
 #include "sim_can_hal.h"
+#include "tcp_server.h"
 
 class PtyHal final : public SimCanHal {
  public:
   // 32 RX slots: host scheduling jitter must not fake BUFFER FULL.
   PtyHal(const CarSpec &car, const char *linkPath)
-      : SimCanHal(car, 32), link_(linkPath) {}
+      : SimCanHal(car, 32), pty_(linkPath), links_(pty_, tcp_) {}
 
-  // Opens the PTY in raw mode and points linkPath at its slave. false (with
-  // a message on stderr) on failure.
   bool open();
+  bool listen(const char *hostPort) { return tcp_.open(hostPort); }
 
+  // Between commands: sleeps until the session link or the TCP listener has
+  // something, held TCP output is due, or 1 s passes.
   void waitForInput();
+  void pollLinks() { links_.poll(nowMs()); }
 
-  int readByte() override;
-  void write(const char *bytes, uint16_t length) override;
+  int readByte() override { return links_.readByte(); }
+  void write(const char *bytes, uint16_t length) override {
+    links_.write(bytes, length, nowMs());
+  }
+  void flush() override { links_.flush(); }
+  bool linkTrusted() override { return !links_.onTcp(); }
+  uint8_t linkSwitches() override { return links_.switches(); }
+  bool wifiStatus(uint8_t index, char *out, uint8_t capacity) override {
+    return tcp_.statusLine(index, out, capacity);
+  }
   uint32_t nowMs() override;
   void idleUntil(Deadline d) override;
 
@@ -28,17 +45,12 @@ class PtyHal final : public SimCanHal {
 
  private:
   uint64_t elapsedUs() const;
-  void waitReadable(int64_t timeoutUs);
+  void waitReadable(int64_t timeoutUs, bool listener);
 
-  const char *link_;
-  int master_ = -1;
-  // Held open for the simulator's lifetime: while no slave fd is open, reads
-  // on the master fail with EIO, and clients open and close the port often.
-  int slave_ = -1;
+  PtyLink pty_;
+  TcpServer tcp_;
+  LinkMux links_;
   timespec start_{};
-  char in_[256];
-  ssize_t inLen_ = 0;
-  ssize_t inPos_ = 0;
 };
 
 #endif  // PTY_HAL_H

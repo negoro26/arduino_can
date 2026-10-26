@@ -3,7 +3,7 @@
 //
 //   BusSide  CAN controller + clock + serial INPUT (to notice STOPPED).
 //            Everything a receive window may touch. No serial output.
-//   Hal      BusSide + serial OUTPUT.
+//   Hal      BusSide + serial OUTPUT + what the core must know about the link.
 //
 // The bus procedures in bus.h take BusSide&, so they cannot write to USB while
 // an ISO-TP burst is arriving (a blocking USB write is ~1 ms; the MCP2515 has
@@ -16,9 +16,14 @@
 #include "can_types.h"
 #include "guard.h"
 
+// readByte() result once the session's link has gone (the TCP client closed or
+// left the access point). Whatever is running stops: an ATMA started from a
+// phone would otherwise stream into nothing, and hold the session, forever.
+constexpr int kLinkClosed = -2;
+
 class BusSide {
  public:
-  // Next received byte, or -1 if none is buffered. Never blocks.
+  // Next received byte, -1 if none is buffered, or kLinkClosed. Never blocks.
   virtual int readByte() = 0;
 
   virtual uint32_t nowMs() = 0;
@@ -51,6 +56,20 @@ class Hal : public BusSide {
  public:
   // May block (USB backpressure). Never called inside a receive window.
   virtual void write(const char *bytes, uint16_t length) = 0;
+  // Sends output the link holds back to batch (TCP) now. Elm calls it where a
+  // burst ends without a prompt: each ATMA batch.
+  virtual void flush() = 0;
+  // false while the session runs over a link anyone in WiFi range can reach;
+  // AT#GUARD WRITE is refused there.
+  virtual bool linkTrusted() = 0;
+  // Counts each move of the session to another link (wrapping). On a change
+  // the core drops the unfinished line and the request a bare CR repeats, so
+  // nothing one link sent runs on, or with the trust of, the next. A move to
+  // an untrusted link also lowers a WRITE tier to READ.
+  virtual uint8_t linkSwitches() = 0;
+  // AT#WIFI: line `index` (from 0) of the WiFi state into `out`; false past
+  // the last line.
+  virtual bool wifiStatus(uint8_t index, char *out, uint8_t capacity) = 0;
 
  protected:
   ~Hal() = default;

@@ -5,7 +5,7 @@ static void discardRestOfLine(BusSide &bus, int first) {
   const Deadline d = Deadline::after(bus.nowMs(), kInterruptLineRestMs);
   for (;;) {
     const int c = bus.readByte();
-    if (c == '\r') return;
+    if (c == '\r' || c == kLinkClosed) return;
     if (c >= 0) continue;
     if (d.passed(bus.nowMs())) return;
     bus.idleUntil(d);
@@ -15,6 +15,7 @@ static void discardRestOfLine(BusSide &bus, int first) {
 Wake await(BusSide &bus, Deadline d, CanFrame *out) {
   for (;;) {
     const int c = bus.readByte();
+    if (c == kLinkClosed) return Wake::Interrupted;
     if (c >= 0 && c != '\n') {
       discardRestOfLine(bus, c);
       return Wake::Interrupted;

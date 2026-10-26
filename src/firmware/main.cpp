@@ -19,6 +19,7 @@ void setup() {
 }
 
 void loop() {
+  hal.pollLinks();
   elm.service();
 #ifdef ELM_LOOPBACK_DEMO
   hal.keepCarClock();
