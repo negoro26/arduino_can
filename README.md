@@ -132,6 +132,8 @@ The firmware answers `?` to `AT BRD` (USB has no baud rate). That is why ddt4all
 
 Every frame the adapter transmits is classified by its diagnostic service before it reaches the bus. A frame above the current tier is not sent, and the adapter prints `BLOCKED` (ddt4all and pyren show that as an empty answer).
 
+Below `WRITE` the adapter transmits only on diagnostic CAN ids. Those are the 11-bit ids `600` to `7FF` and the 29-bit ids `18DAxxxx` and `18DBxxxx` (ISO 15765-4 normal fixed addressing, for example `18DA10F1` and `18DB33F1`). A frame on any other id needs `WRITE`, whatever its bytes are.
+
 | Tier | Allows |
 |---|---|
 | `READ` (default) | OBD-II modes 01, 02, 03, 05, 06, 07, 09, 0A; services 10 (except programming sessions 02, 82, 85), 12, 17, 18, 19, 1A, 20, 21, 22, 23, 24, 3E, 81, 82, 83; flow-control frames |
@@ -188,7 +190,7 @@ Code layout:
 - `src/firmware` holds the MCP2515 adapter, and `src/sim` holds the PTY host.
 
 ```sh
-pio test -e native                                         # 95 cases, no board, no car
+pio test -e native                                         # 98 cases, no board, no car
 pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim
 uv run tools/compat/check_clients.py --sim .pio/build/sim/program
 uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo

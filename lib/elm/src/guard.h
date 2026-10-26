@@ -6,7 +6,9 @@
 //
 // The guard classifies the EXACT bytes that will be on the wire, with data[0]
 // read as the ISO-TP PCI. CAF1 frames are built (PCI included) before they are
-// admitted, so one rule covers CAF0 and CAF1.
+// admitted, so one rule covers CAF0 and CAF1. Below WRITE only diagnostic ids
+// pass at all: 11-bit 0x600-0x7FF, and 29-bit 18DAxxxx/18DBxxxx (ISO 15765-4
+// normal fixed addressing).
 
 #ifndef ELM_GUARD_H
 #define ELM_GUARD_H

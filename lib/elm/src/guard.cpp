@@ -44,7 +44,16 @@ Tier tierOfService(uint8_t sid, bool hasSub, uint8_t sub) {
   }
 }
 
+static bool isDiagnosticId(CanId id) {
+  if (!id.isExt()) return id.value() >= 0x600;
+  const uint32_t top = id.value() >> 16;
+  return top == 0x18DA || top == 0x18DB;
+}
+
 Tier Guard::classify(const CanFrame &f) const {
+  // A raw frame on an operational id can drive the car whatever its PCI byte
+  // looks like.
+  if (!isDiagnosticId(f.id)) return Tier::Write;
   switch (pciOf(f)) {
     case Pci::FlowControl:
       return Tier::Read;

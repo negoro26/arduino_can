@@ -111,7 +111,7 @@ static void single_frame_ends_a_segmented_request(void) {
   TEST_ASSERT_FALSE(g.permits(frame(k7E0, {0x21, 0x44})));
 }
 
-static void flow_control_is_always_allowed(void) {
+static void flow_control_is_allowed_at_read(void) {
   Guard g;
   TEST_ASSERT_TRUE(g.permits(frame(k7E0, {0x30, 0x00, 0x00, 0, 0, 0, 0, 0})));
   TEST_ASSERT_TRUE(g.permits(frame(k7E0, {0x31, 0x00, 0x00})));
@@ -122,6 +122,42 @@ static void other_pci_and_empty_frames_are_denied(void) {
   g.setTier(Tier::Clear);
   TEST_ASSERT_FALSE(g.permits(frame(k7E0, {0x40, 0x22})));
   TEST_ASSERT_FALSE(g.permits(frame(k7E0, {})));
+}
+
+static void only_diagnostic_ids_pass_below_write(void) {
+  const CanFrame flowControlLooking =
+      frame(CanId::std11(0x1F6), {0x30, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77});
+  const CanFrame read = frame(CanId::std11(0x5DE), {0x03, 0x22, 0xF1, 0x90});
+  Guard g;
+  for (Tier t : {Tier::Read, Tier::Clear}) {
+    g.setTier(t);
+    TEST_ASSERT_FALSE(g.permits(flowControlLooking));
+    TEST_ASSERT_FALSE(g.permits(read));
+  }
+  g.setTier(Tier::Write);
+  ClearedFrame a, b;
+  TEST_ASSERT_TRUE(g.admit(flowControlLooking, &a));
+  TEST_ASSERT_TRUE(g.admit(read, &b));
+}
+
+static void reads_on_diagnostic_ids_pass_at_read(void) {
+  Guard g;
+  const CanId ids[] = {k7E0, CanId::std11(0x605), CanId::ext29(0x18DA10F1),
+                       CanId::ext29(0x18DB33F1)};
+  for (CanId id : ids) {
+    ClearedFrame out;
+    TEST_ASSERT_TRUE(g.admit(frame(id, {0x03, 0x22, 0xF1, 0x90}), &out));
+  }
+  TEST_ASSERT_FALSE(g.permits(frame(CanId::ext29(0x0CF00400), {0x03, 0x22, 0xF1, 0x90})));
+}
+
+static void raw_frame_on_an_operational_id_is_blocked(void) {
+  TestHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  for (const char *cmd : {"ATE0", "ATSP6", "ATCAF0", "ATSH1F6"}) run(hal, elm, cmd);
+  TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "3011223344556677").c_str());
+  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
 }
 
 static void tier_survives_reset_commands_and_is_settable(void) {
@@ -152,8 +188,11 @@ int main(int, char **) {
   RUN_TEST(consecutive_frames_inherit_the_first_frame);
   RUN_TEST(consecutive_frame_is_judged_against_the_current_tier);
   RUN_TEST(single_frame_ends_a_segmented_request);
-  RUN_TEST(flow_control_is_always_allowed);
+  RUN_TEST(flow_control_is_allowed_at_read);
   RUN_TEST(other_pci_and_empty_frames_are_denied);
+  RUN_TEST(only_diagnostic_ids_pass_below_write);
+  RUN_TEST(reads_on_diagnostic_ids_pass_at_read);
+  RUN_TEST(raw_frame_on_an_operational_id_is_blocked);
   RUN_TEST(tier_survives_reset_commands_and_is_settable);
   return UNITY_END();
 }
