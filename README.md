@@ -52,7 +52,7 @@ The OBD2 connector pinout (SAE J1962) is fixed by the standard, so check an untr
 | 14 | CAN-L | `CANL` |
 | 4 or 5 | GND | `GND` |
 
-With a laptop, leave pin 16 (+12 V) unconnected: the board runs from USB. To run it from the car instead, read [Power it without a laptop](#power-it-without-a-laptop) first.
+With a laptop, leave pin 16 (+12 V) unconnected. The board runs from USB. To run it from the car instead, read [Power it without a laptop](#power-it-without-a-laptop).
 
 ### What a miswire can damage
 
@@ -158,10 +158,16 @@ On Android, a USB OTG cable also works with apps that accept CDC-ACM serial devi
 
 ## Power it without a laptop
 
-Use one of these:
+The shield can power the MKR1000 by itself. Its own buck converter (TPS54232, `U3` in the schematic) turns the terminal's `VIN` input into about 5 V on the MKR1000's `VIN` pin. You do not need an external converter. Use one of these:
 
-- A USB power bank or a car USB charger into the MKR1000's micro-USB port. This needs no extra parts.
-- OBD pin 16 into the shield's `X2` VIN screw terminal, with pin 4 or 5 into `X2` GND. A TPS54232 buck converter on the shield makes about 5 V for the MKR1000. The shield is rated 7-24 V on that terminal, and normal running (12-14.4 V) is within that. A load dump or a reversed connection is not, so put a fuse, a series diode and a TVS diode between pin 16 and `X2`.
+- A USB power bank or a car USB charger in the MKR1000's micro-USB port.
+- OBD pin 16 (+12 V) to the `VIN` position and pin 4 or 5 to `GND`. The terminal is rated 7-24 V, and a running car (12-14.4 V) is inside that range. Nothing else is required. The laptop can stay on USB for data at the same time.
+
+The schematic shows nothing on the `VIN` input except a 10 uF capacitor (`C9`). There is no fuse, no reverse-polarity diode and no surge clamp, and the board works without them. These optional parts protect the board, not the car:
+
+- A series diode in the pin 16 wire, against `VIN` and `GND` being swapped. The mirrored bottom labels make that swap easy.
+- A TVS diode across `VIN` and `GND`, against an alternator load-dump spike. The buck converter's absolute maximum input is 30 V.
+- A 1 A inline fuse in the pin 16 wire, so a fault on the board blows that fuse and not the car's fuse for pin 16.
 
 Pin 16 is connected to the battery even with the ignition off. Unplug the adapter when you are done. The current the board draws with WiFi on has not been measured.
 
