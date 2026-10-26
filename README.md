@@ -144,8 +144,10 @@ The MKR1000's WiFi chip (WINC1500) runs an access point that behaves like a WiFi
 
 - One phone at a time. The WINC1500 accepts a single station.
 - While a phone is connected, it owns the adapter and USB input waits. USB works again when the phone disconnects. When one side takes over from the other, a line the other left without its CR is dropped, and a bare CR does not repeat the other side's last request.
+- A phone that connects drops a `WRITE` tier back to `READ`. A `CLEAR` tier stays.
 - iPhone apps work over WiFi. They need the Local Network permission. iPhones cannot use the USB port.
 - `AT#WIFI` over USB prints the network, the WINC firmware version, and the connected phone's address.
+- Known limitation. The WiFi101 library retries a send into a full WiFi buffer with no timeout. If a phone app stops reading while the adapter streams `ATMA`, the adapter can stall, USB included, until the phone reads again or disconnects. This comes from reading the library source and has not been observed.
 - To change the network name or password, build with your own values. The name can have at most 32 characters and the password needs at least 8, or the build fails:
 
 ```sh
@@ -194,6 +196,7 @@ Listen-before-talk lasts only 60 ms. A slow periodic frame on a `6xx` id can fal
 - The tier lives in RAM. ATZ, ATWS and ATD do not touch it. Unplugging the board resets it to `READ`.
 - To clear codes from ddt4all, open a terminal first, send `AT#GUARD CLEAR`, close the terminal, then connect ddt4all.
 - Over WiFi, `AT#GUARD WRITE` answers `?`. Only USB can unlock `WRITE`. `READ` and `CLEAR` work from both.
+- A phone that connects drops a `WRITE` tier back to `READ`, so a `WRITE` unlocked over USB never passes to a phone. This matters when the board stays powered from pin 16 after the laptop is unplugged. A `CLEAR` tier stays.
 - In raw mode (`ATCAF0`, which ddt4all and pyren use), the guard reads the service from the ISO-TP frame itself. A consecutive frame gets the verdict of the first frame before it.
 
 ## How the adapter behaves on the bus
@@ -244,7 +247,7 @@ Code layout:
 - `lib/elm/src/link_mux.*` decides which link (USB or a TCP client) owns the ELM session. The firmware and the simulator share it.
 
 ```sh
-pio test -e native                                         # 122 cases, no board, no car
+pio test -e native                                         # 125 cases, no board, no car
 pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim [--tcp 127.0.0.1:35000]
 uv run tools/compat/check_clients.py --sim .pio/build/sim/program [--tcp]
 uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo

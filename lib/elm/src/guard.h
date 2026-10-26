@@ -42,7 +42,8 @@ class ClearedFrame {
 };
 
 // Lives in Elm next to (not inside) Settings: ATZ/ATWS/ATD cannot reset it;
-// only power-up (construction) and AT#GUARD change the tier, and only
+// only power-up (construction), AT#GUARD and the session moving to an
+// untrusted link (WRITE -> READ, see Elm::service) change the tier, and only
 // power-up forgets the heard ids.
 class Guard {
  public:

@@ -64,7 +64,8 @@ class Hal : public BusSide {
   virtual bool linkTrusted() = 0;
   // Counts each move of the session to another link (wrapping). On a change
   // the core drops the unfinished line and the request a bare CR repeats, so
-  // nothing one link sent runs on, or with the trust of, the next.
+  // nothing one link sent runs on, or with the trust of, the next. A move to
+  // an untrusted link also lowers a WRITE tier to READ.
   virtual uint8_t linkSwitches() = 0;
   // AT#WIFI: line `index` (from 0) of the WiFi state into `out`; false past
   // the last line.

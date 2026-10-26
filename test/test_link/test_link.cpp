@@ -283,6 +283,58 @@ static void guard_write_is_refused_over_tcp(void) {
   TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>OK\r\r>WRITE\r\r>", hal.usb.out.c_str());
 }
 
+static void a_phone_taking_the_session_drops_write_to_read(void) {
+  MuxHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  hal.usb.out.clear();
+  hal.usb.in = "ATE0\rAT#GUARD WRITE\rAT#GUARD\r";
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>OK\r\r>WRITE\r\r>", hal.usb.out.c_str());
+
+  hal.tcp.connect("AT#GUARD\r");
+  hal.poll();
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("READ\r\r>", hal.tcp.all().c_str());
+
+  hal.tcp.open = false;
+  elm.service();
+  hal.poll();
+  hal.usb.out.clear();
+  hal.usb.in = "AT#GUARD\r";
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("READ\r\r>", hal.usb.out.c_str());
+}
+
+static void a_write_service_from_the_phone_is_blocked(void) {
+  MuxHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  hal.usb.out.clear();
+  hal.usb.in = "ATE0\rATSP6\rATSH7E0\rAT#GUARD WRITE\r1101\r";
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>OK\r\r>OK\r\r>OK\r\r>7F 11 11\r\r>",
+                           hal.usb.out.c_str());
+
+  hal.tcp.connect("ATSH7E0\r1101\r");
+  hal.poll();
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("OK\r\r>BLOCKED\r\r>", hal.tcp.all().c_str());
+}
+
+static void clear_set_over_usb_survives_a_phone_taking_the_session(void) {
+  MuxHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  hal.usb.in = "ATE0\rAT#GUARD CLEAR\r";
+  elm.service();
+
+  hal.tcp.connect("AT#GUARD\r");
+  hal.poll();
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("CLEAR\r\r>", hal.tcp.all().c_str());
+}
+
 static void a_line_the_phone_left_unfinished_does_not_run_on_usb(void) {
   MuxHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
@@ -391,6 +443,9 @@ int main(int, char **) {
   RUN_TEST(held_tcp_output_goes_after_20_ms);
   RUN_TEST(elm_answers_on_the_session_link_only);
   RUN_TEST(guard_write_is_refused_over_tcp);
+  RUN_TEST(a_phone_taking_the_session_drops_write_to_read);
+  RUN_TEST(a_write_service_from_the_phone_is_blocked);
+  RUN_TEST(clear_set_over_usb_survives_a_phone_taking_the_session);
   RUN_TEST(a_line_the_phone_left_unfinished_does_not_run_on_usb);
   RUN_TEST(a_bare_cr_on_usb_does_not_repeat_the_phone_request);
   RUN_TEST(the_phone_first_command_ignores_a_line_half_typed_on_usb);
