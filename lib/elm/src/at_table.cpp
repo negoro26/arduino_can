@@ -336,12 +336,12 @@ const AtCommand AtTable::rows[] = {
      nullptr, false},
 
     // Accepted as no-ops so ddt4all/pyren adapter checkers see no "?": CAN
-    // silent monitoring, CAN extended addressing, CAN timing, and K-line
-    // parameters that cannot apply without a K-line transceiver.
+    // silent monitoring, turning off CAN extended addressing (it is never
+    // on), CAN timing, and K-line parameters that cannot apply without a
+    // K-line transceiver.
     {"M", AtShape::Bit, ok, nullptr, false},
     {"CSM", AtShape::Bit, ok, nullptr, false},
     {"CEA", AtShape::None, ok, nullptr, false},
-    {"CEA", AtShape::Hex2, ok, nullptr, false},
     {"CV", AtShape::Dec4, ok, nullptr, false},
     {"IB", AtShape::Hex2, ok, nullptr, false},
     {"SW", AtShape::Hex2, ok, nullptr, false},

@@ -168,6 +168,7 @@ Differences from a real ELM327:
 - Protocols 1-5 (K-line, J1850) can be selected, but requests answer `UNABLE TO CONNECT`. `ATSI` and `ATFI` answer `BUS INIT: ...ERROR`.
 - `ATRV` always answers `12.0V`. Pin 16 is not wired, so nothing is measured. python-OBD refuses to connect below 6 V.
 - `AT BRD` and `STI` answer `?`.
+- CAN extended addressing is not implemented. `ATCEA hh` answers `?`, and `ATCEA` (turn it off) answers `OK`.
 - A bare CR repeats only the last CAN request, not an AT command.
 - `ATMA` keeps monitoring when the chip drops a frame, instead of stopping with `BUFFER FULL`.
 - After the last frame of an answer the adapter waits 50 ms (`AT AT1`, default) or 25 ms (`AT AT2`) for more, capped by `AT ST`. While consecutive frames are still owed after its own flow control, it waits the full `AT ST`.
@@ -190,7 +191,7 @@ Code layout:
 - `src/firmware` holds the MCP2515 adapter, and `src/sim` holds the PTY host.
 
 ```sh
-pio test -e native                                         # 98 cases, no board, no car
+pio test -e native                                         # 99 cases, no board, no car
 pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim
 uv run tools/compat/check_clients.py --sim .pio/build/sim/program
 uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo

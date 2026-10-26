@@ -89,7 +89,7 @@ static void client_setup_commands_are_accepted(void) {
       "AT FC SH 7E0", "AT FC SD 30 00 00", "AT FC SM 1", "AT ST FF", "AT AT 0",
       "AT SP 6", "AT SP 8", "AT SP 7", "AT SP 9", "AT AT 1", "AT CRA 7E8",
       "AT CRA 18DAF110", "AT ST 4B", "ATSTFF", "AT R0", "AT R1", "AT", "ATD0",
-      "ATD1", "ATCSM1", "ATCEA", "ATCEA 01", "ATCV 1250", "ATKW0", "ATKW",
+      "ATD1", "ATCSM1", "ATCEA", "ATCV 1250", "ATKW0", "ATKW",
       "ATBI", "ATSS", "ATIIA 01", "ATM0", "ATNL", "ATV0", "ATV1", "ATAR",
       "ATCM 123", "ATCM 12345678", "ATCF 123", "ATCF 12345678", "ATSP A6",
       "ATTP A6", "ATTP 6", "ATSP 00", "ATS1", "ATAT1", "ATPC", "ATD"};
@@ -114,6 +114,14 @@ static void identity_and_fixed_answers(void) {
   TEST_ASSERT_EQUAL_STRING("?\r", reply(hal, elm, "ATBRD 23").c_str());
   TEST_ASSERT_EQUAL_STRING("?\r", reply(hal, elm, "ATXYZ").c_str());
   TEST_ASSERT_EQUAL_STRING("T:00 R:00\r", reply(hal, elm, "ATCS").c_str());
+}
+
+static void extended_addressing_can_only_be_turned_off(void) {
+  TestHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  TEST_ASSERT_EQUAL_STRING("OK\r", reply(hal, elm, "ATCEA").c_str());
+  TEST_ASSERT_EQUAL_STRING("?\r", reply(hal, elm, "ATCEA 12").c_str());
 }
 
 static void flow_control_modes_need_their_inputs(void) {
@@ -225,6 +233,7 @@ int main(int, char **) {
   RUN_TEST(protocol_selection_forms);
   RUN_TEST(client_setup_commands_are_accepted);
   RUN_TEST(identity_and_fixed_answers);
+  RUN_TEST(extended_addressing_can_only_be_turned_off);
   RUN_TEST(flow_control_modes_need_their_inputs);
   RUN_TEST(protocol_display);
   RUN_TEST(reset_restores_every_setting_but_keeps_the_stored_protocol);
