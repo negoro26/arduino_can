@@ -363,10 +363,10 @@ static void at_wifi_prints_the_hal_lines(void) {
   TestHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
   elm.begin();
-  hal.setWifiStatus({"WIFI AP MKR-OBDII WPA2 192.168.0.10:35000",
+  hal.setWifiStatus({"WIFI AP MKR-OBDII WPA/WPA2 192.168.0.10:35000",
                      "WINC firmware 19.6.1", "CLIENT 192.168.0.100 connected"});
   TEST_ASSERT_EQUAL_STRING(
-      "AT#WIFI\rWIFI AP MKR-OBDII WPA2 192.168.0.10:35000\r"
+      "AT#WIFI\rWIFI AP MKR-OBDII WPA/WPA2 192.168.0.10:35000\r"
       "WINC firmware 19.6.1\rCLIENT 192.168.0.100 connected\r\r>",
       ask(hal, elm, "AT#WIFI").c_str());
   hal.setWifiStatus({"WIFI OFF: no WINC1500 found"});

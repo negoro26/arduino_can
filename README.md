@@ -134,7 +134,7 @@ The MKR1000's WiFi chip (WINC1500) runs an access point that behaves like a WiFi
 
 | Setting | Value |
 |---|---|
-| Network | `MKR-OBDII`, WPA2 |
+| Network | `MKR-OBDII`, WPA/WPA2 |
 | Password | `obd2mkr1000` |
 | Adapter address | `192.168.0.10`, TCP port `35000` |
 
@@ -152,7 +152,7 @@ The MKR1000's WiFi chip (WINC1500) runs an access point that behaves like a WiFi
 PLATFORMIO_BUILD_FLAGS='-D ELM_WIFI_SSID=\"My-OBD\" -D ELM_WIFI_PASSWORD=\"a-long-secret\"' pio run -t upload
 ```
 
-WPA2 needs WINC firmware 19.5.2 or newer. This board has 19.6.1. If the access point cannot start, WiFi stays off, `AT#WIFI` says why, and USB keeps working. The adapter never falls back to an open network.
+The WINC1500's only password mode offers WPA and WPA2 together (a scan lists both). It has no WPA2-only setting. A WPA/WPA2 access point needs WINC firmware 19.5.2 or newer. This board has 19.6.1. If the access point cannot start, WiFi stays off, `AT#WIFI` says why, and USB keeps working. The adapter never falls back to an open network.
 
 On Android, a USB OTG cable also works with apps that accept CDC-ACM serial devices. AndrOBD lists the Arduino vendor id (0x2341). Torque Pro (FTDI and Prolific only) and OBD Fusion (FTDI only) do not. Car Scanner added USB adapters in v2.1.50, and it is not known whether it accepts this board.
 

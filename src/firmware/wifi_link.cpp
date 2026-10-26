@@ -10,7 +10,7 @@
 #define ELM_WIFI_PASSWORD "obd2mkr1000"
 #endif
 
-// The WINC refuses a shorter WPA2 key at run time (WL_AP_FAILED).
+// The WINC refuses a shorter WPA key at run time (WL_AP_FAILED).
 static_assert(sizeof(ELM_WIFI_PASSWORD) - 1 >= 8,
               "ELM_WIFI_PASSWORD needs at least 8 characters");
 
@@ -30,7 +30,7 @@ void WifiLink::begin() {
   strncpy(firmware_, WiFi.firmwareVersion(), sizeof firmware_ - 1);
   WiFi.config(kApIp);
   if (WiFi.beginAP(ELM_WIFI_SSID, ELM_WIFI_PASSWORD, kChannel) != WL_AP_LISTENING) {
-    offReason_ = "access point refused (WPA2 needs WINC firmware 19.5.2+)";
+    offReason_ = "access point refused (WPA/WPA2 needs WINC firmware 19.5.2+)";
     return;
   }
   apStatus_ = WL_AP_LISTENING;
@@ -71,7 +71,7 @@ void WifiLink::write(const char *bytes, uint16_t length) {
 bool WifiLink::statusLine(uint8_t index, char *out, uint8_t capacity) {
   if (index == 0) {
     if (on_) {
-      snprintf(out, capacity, "WIFI AP %s WPA2 %d.%d.%d.%d:%u", ELM_WIFI_SSID,
+      snprintf(out, capacity, "WIFI AP %s WPA/WPA2 %d.%d.%d.%d:%u", ELM_WIFI_SSID,
                kApIp[0], kApIp[1], kApIp[2], kApIp[3], kPort);
     } else {
       snprintf(out, capacity, "WIFI OFF: %s", offReason_);
