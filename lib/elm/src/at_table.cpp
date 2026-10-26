@@ -371,7 +371,9 @@ const AtCommand AtTable::rows[] = {
      nullptr, false},
     {"#WIFI", AtShape::None,
      [](Elm &e, const AtArgs &) {
-       char line[64];
+       // Room for the longest Hal line, 69 characters: the firmware's WIFI OFF
+       // hint, or WIFI AP with a 32-character SSID.
+       char line[80];
        for (uint8_t i = 0; e.hal_.wifiStatus(i, line, sizeof line); ++i) {
          e.print(line);
        }

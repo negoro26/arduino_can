@@ -13,6 +13,9 @@
 // The WINC refuses a shorter WPA key at run time (WL_AP_FAILED).
 static_assert(sizeof(ELM_WIFI_PASSWORD) - 1 >= 8,
               "ELM_WIFI_PASSWORD needs at least 8 characters");
+// 802.11's limit; WiFi101 copies the SSID into a 33-byte field unchecked.
+static_assert(sizeof(ELM_WIFI_SSID) - 1 <= 32,
+              "ELM_WIFI_SSID holds at most 32 characters");
 
 namespace {
 

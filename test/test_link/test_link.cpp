@@ -369,6 +369,12 @@ static void at_wifi_prints_the_hal_lines(void) {
       "AT#WIFI\rWIFI AP MKR-OBDII WPA/WPA2 192.168.0.10:35000\r"
       "WINC firmware 19.6.1\rCLIENT 192.168.0.100 connected\r\r>",
       ask(hal, elm, "AT#WIFI").c_str());
+  hal.setWifiStatus(
+      {"WIFI OFF: access point refused (WPA/WPA2 needs WINC firmware 19.5.2+)"});
+  TEST_ASSERT_EQUAL_STRING(
+      "AT#WIFI\r"
+      "WIFI OFF: access point refused (WPA/WPA2 needs WINC firmware 19.5.2+)\r\r>",
+      ask(hal, elm, "AT#WIFI").c_str());
   hal.setWifiStatus({"WIFI OFF: no WINC1500 found"});
   TEST_ASSERT_EQUAL_STRING("AT#WIFI\rWIFI OFF: no WINC1500 found\r\r>",
                            ask(hal, elm, "AT#WIFI").c_str());

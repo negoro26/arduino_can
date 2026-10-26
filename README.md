@@ -146,7 +146,7 @@ The MKR1000's WiFi chip (WINC1500) runs an access point that behaves like a WiFi
 - While a phone is connected, it owns the adapter and USB input waits. USB works again when the phone disconnects. When one side takes over from the other, a line the other left without its CR is dropped, and a bare CR does not repeat the other side's last request.
 - iPhone apps work over WiFi. They need the Local Network permission. iPhones cannot use the USB port.
 - `AT#WIFI` over USB prints the network, the WINC firmware version, and the connected phone's address.
-- To change the network name or password, build with your own values. The password needs at least 8 characters, or the build fails:
+- To change the network name or password, build with your own values. The name can have at most 32 characters and the password needs at least 8, or the build fails:
 
 ```sh
 PLATFORMIO_BUILD_FLAGS='-D ELM_WIFI_SSID=\"My-OBD\" -D ELM_WIFI_PASSWORD=\"a-long-secret\"' pio run -t upload
