@@ -21,7 +21,7 @@ Nothing in this README has been tried on a car yet. The firmware passes the clie
 
 ## Hardware
 
-Verified on the bench, or read from the official [ASX00005 schematic](https://docs.arduino.cc/resources/schematics/ASX00005-schematics.pdf):
+Verified on the bench, read from the official [ASX00005 schematic](https://docs.arduino.cc/resources/schematics/ASX00005-schematics.pdf), or taken from the [Arduino store page](https://store.arduino.cc/products/arduino-mkr-can-shield):
 
 | Item | Value | How known |
 |---|---|---|
@@ -30,29 +30,27 @@ Verified on the bench, or read from the official [ASX00005 schematic](https://do
 | Interrupt | D7 (not used: the firmware polls over SPI) | schematic |
 | Crystal | 16 MHz | schematic (`Y1`, OSC1/OSC2 column) |
 | Transceiver | TJA1049T/3, `STB` tied low via `R8 = 0R` | schematic |
-| Termination | onboard **120R** (`R3`), no jumper found | schematic |
+| Termination | 120R (`R3`) in series with the slide switch `SW1` | schematic; store page: "Switchable onboard termination resistor" |
 | Transceiver power | header `5V` -> net `+5V` -> `VDD` | schematic |
+| Power input | terminal `VIN` -> TPS54232 buck converter (`U3`) -> the MKR's `VIN` pin; rated 7-24 V | schematic, store page |
 
-The transceiver is fed from the header `5V` pin, so USB power alone is enough. The 12 V screw terminal is optional.
+The transceiver is fed from the header `5V` pin, so USB power alone is enough. The terminal's `VIN` input is optional.
 
-The onboard 120R adds a third terminator in parallel with the car's two. That is usually fine for a short session. Suspect it first if frames arrive but erratically.
+`SW1` switches the 120R across CAN-H and CAN-L. A car bus is already terminated at both ends, so set `SW1` to off for a car. The schematic does not say which slide position is off. Check with a multimeter on the shield alone: about 120 ohms between the `CANH` and `CANL` terminals means the terminator is on, and an open circuit means it is off.
 
 ## Wire it to the car
 
-The shield has two 2-position screw terminals and no DB9:
+The shield has one 4-position terminal block. In the schematic its positions are, in order, `GND`, `CANL`, `CANH` and `VIN`.
 
-| Terminal | Rating | Signals |
-|---|---|---|
-| `X3` | 2 A | CAN-H, CAN-L (next to the 120R terminator `R3`) |
-| `X2` | 3 A | VIN, GND |
+Read the labels on the top side of the board. Arduino's store page warns: "On some boards, the bottom silk is mirrored. Please refer to the top silk for guidance." The bottom labels in Arduino's own product photo read `VIN`, `CANL`, `CANH`, `GND`, the reverse of the schematic. So `GND` and `VIN` are the two positions that are easy to swap. Before you connect the car, check with a multimeter that the position you use as `GND` beeps against the metal shell of the MKR1000's USB socket.
 
 The OBD2 connector pinout (SAE J1962) is fixed by the standard, so check an untrustworthy aftermarket cable against it:
 
-| OBD2 pin | Signal | Where it goes |
+| OBD2 pin | Signal | Terminal position |
 |---|---|---|
-| 6 | CAN-H | `X3` |
-| 14 | CAN-L | `X3` |
-| 4 or 5 | GND | `X2` GND (leave VIN empty) |
+| 6 | CAN-H | `CANH` |
+| 14 | CAN-L | `CANL` |
+| 4 or 5 | GND | `GND` |
 
 Do **not** connect pin 16 (+12 V). The board runs from USB.
 
@@ -60,7 +58,7 @@ Do **not** connect pin 16 (+12 V). The board runs from USB.
 
 CAN-H and CAN-L cannot be damaged by a miswire. The NXP TJA1049 datasheet gives `VCANH` and `VCANL` an absolute maximum of -58 V to +58 V and an operating common-mode range of -12 V to +12 V, so battery voltage on a bus pin is within normal operation. ESD rating is +-8 kV. The MCP2515 sits behind the transceiver and never sees the wires.
 
-GND can. If +12 V lands on the ground line, the battery shorts through the USB cable. Check that connection twice.
+GND can. If +12 V lands on the `GND` position, the battery shorts through the USB cable. Check that connection twice.
 
 ## Flash the firmware
 
