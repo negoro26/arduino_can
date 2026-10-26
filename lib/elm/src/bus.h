@@ -87,12 +87,21 @@ Outcome converse(BusSide &bus, Guard &guard, LinkState &link,
                  const Settings &s, Protocol p, const HexRequest &req,
                  RxLog &log);
 
+// What AT SP 0 tries, in this order.
+constexpr Protocol kSearchOrder[] = {Protocol::Can11_500, Protocol::Can29_500,
+                                     Protocol::Can11_250, Protocol::Can29_250};
+
+// Whether the guard permits req's frame under at least one searched protocol.
+// The id differs per protocol: ATSH 7E0 is 29-bit 180007E0 on 7 and 9.
+bool searchable(const Guard &guard, const Settings &s, const HexRequest &req);
+
 // AT SP 0 search on the first request with no protocol found yet. Elm prints
-// "SEARCHING..." before calling. converse() per protocol 6, 7, 8, 9, so the
-// guard and listen-before-talk apply to every attempt and a mismatched bitrate
-// is skipped without transmitting. The first answer wins and sets
-// s.protocol.current. Blocked / Stopped end the search at once. Nothing found
-// -> UnableToConnect.
+// "SEARCHING..." before calling. converse() per protocol in kSearchOrder, so
+// the guard and listen-before-talk apply to every attempt and a mismatched
+// bitrate is skipped without transmitting. A protocol whose frame the guard
+// refuses is skipped too. The first answer wins and sets s.protocol.current.
+// Stopped ends the search at once. Every protocol refused -> Blocked; nothing
+// found otherwise -> UnableToConnect.
 Outcome search(BusSide &bus, Guard &guard, LinkState &link, Settings &s,
                const HexRequest &req, RxLog &log);
 

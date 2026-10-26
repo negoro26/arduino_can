@@ -254,10 +254,43 @@ static void blocked_request_skips_the_search(void) {
   Elm elm(hal);
   elm.begin();
   runAll(hal, elm, {"ATE0", "ATSP0"});
+  const uint32_t start = hal.now();
   TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "14FF00").c_str());
   TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "04").c_str());
+  // Refused as 11-bit 1F6 and as 29-bit 180001F6.
+  run(hal, elm, "ATSH1F6");
+  TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "0100").c_str());
   TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+  TEST_ASSERT_EQUAL_UINT32(start, hal.now());
   TEST_ASSERT_EQUAL_STRING("A0\r\r>", ask(hal, elm, "ATDPN").c_str());
+}
+
+static void search_with_a_header_skips_protocols_the_guard_refuses(void) {
+  TestHal hal(renaultDaciaCarQuiet(Bitrate::k250));
+  Elm elm(hal);
+  elm.begin();
+  // Protocol 7 would send 180007E0, which the guard refuses.
+  runAll(hal, elm, {"ATE0", "ATSP0", "ATSH7E0"});
+  TEST_ASSERT_EQUAL_STRING("SEARCHING...\r41 00 BE 1F A8 12\r\r>", ask(hal, elm, "0100").c_str());
+  TEST_ASSERT_EQUAL_STRING("A8\r\r>", ask(hal, elm, "ATDPN").c_str());
+  for (const auto &sent : hal.wire()) TEST_ASSERT_TRUE(sent.second.id == CanId::std11(0x7E0));
+}
+
+static void search_with_skipped_protocols_and_no_answer_is_unable_to_connect(void) {
+  const struct {
+    const char *header;
+    CanId id;
+  } cases[] = {{"7E5", CanId::std11(0x7E5)}, {"18DA10F1", CanId::ext29(0x18DA10F1)}};
+  for (const auto &c : cases) {
+    TestHal hal(renaultDaciaCarQuiet(Bitrate::k250));
+    Elm elm(hal);
+    elm.begin();
+    runAll(hal, elm, {"ATE0", "ATSP0"});
+    run(hal, elm, std::string("ATSH") + c.header);
+    TEST_ASSERT_EQUAL_STRING("SEARCHING...\rUNABLE TO CONNECT\r\r>", ask(hal, elm, "0100").c_str());
+    TEST_ASSERT_EQUAL_size_t(2, hal.wire().size());
+    for (const auto &sent : hal.wire()) TEST_ASSERT_TRUE(sent.second.id == c.id);
+  }
 }
 
 static void guard_clear_lets_the_clear_request_through(void) {
@@ -385,6 +418,8 @@ int main(int, char **) {
   RUN_TEST(wrong_bitrate_on_a_silent_bus_fails_after_one_attempt);
   RUN_TEST(blocked_request_touches_nothing);
   RUN_TEST(blocked_request_skips_the_search);
+  RUN_TEST(search_with_a_header_skips_protocols_the_guard_refuses);
+  RUN_TEST(search_with_skipped_protocols_and_no_answer_is_unable_to_connect);
   RUN_TEST(guard_clear_lets_the_clear_request_through);
   RUN_TEST(ten_frame_burst_with_slow_output_loses_nothing);
   RUN_TEST(survey_finds_the_bitrate_and_lists_ids);

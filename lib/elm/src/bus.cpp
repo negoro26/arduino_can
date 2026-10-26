@@ -205,11 +205,17 @@ Outcome converse(BusSide &bus, Guard &guard, LinkState &link,
   return log.count > 0 ? Outcome::Answered : Outcome::NoData;
 }
 
+bool searchable(const Guard &guard, const Settings &s, const HexRequest &req) {
+  for (Protocol p : kSearchOrder) {
+    if (guard.permits(requestFrame(s, p, req.bytes, req.len))) return true;
+  }
+  return false;
+}
+
 Outcome search(BusSide &bus, Guard &guard, LinkState &link, Settings &s,
                const HexRequest &req, RxLog &log) {
-  static const Protocol kOrder[] = {Protocol::Can11_500, Protocol::Can29_500,
-                                    Protocol::Can11_250, Protocol::Can29_250};
-  for (Protocol p : kOrder) {
+  bool tried = false;
+  for (Protocol p : kSearchOrder) {
     const Outcome o = converse(bus, guard, link, s, p, req, log);
     switch (o) {
       case Outcome::Answered:
@@ -217,17 +223,19 @@ Outcome search(BusSide &bus, Guard &guard, LinkState &link, Settings &s,
       case Outcome::Sent:
         s.protocol = {p, true};
         return o;
-      case Outcome::Blocked:
       case Outcome::Stopped:
         return o;
+      case Outcome::Blocked:
+        break;
       case Outcome::NoData:
       case Outcome::CanError:
       case Outcome::UnableToConnect:
+        tried = true;
         break;
     }
   }
   log.clear();
-  return Outcome::UnableToConnect;
+  return tried ? Outcome::UnableToConnect : Outcome::Blocked;
 }
 
 bool surveyRate(BusSide &bus, Bitrate rate, uint16_t windowMs,

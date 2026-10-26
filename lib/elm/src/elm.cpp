@@ -123,11 +123,9 @@ void Elm::runRequest(const char *line) {
   Outcome outcome;
   const Protocol p = set_.protocol.current;
   if (p == Protocol::None) {
-    // Guard before search: a refused request must not even print
-    // SEARCHING..., let alone listen-before-talk on each protocol.
-    const CanFrame f =
-        requestFrame(set_, Protocol::Can11_500, req.bytes, req.len);
-    if (!guard_.permits(f)) {
+    // A request refused under every protocol must not even print
+    // SEARCHING..., let alone listen-before-talk on each one.
+    if (!searchable(guard_, set_, req)) {
       print("BLOCKED");
       return;
     }
