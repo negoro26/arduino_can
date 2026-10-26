@@ -48,6 +48,7 @@ class LinkMux {
   void poll(uint32_t nowMs);
 
   bool onTcp() const { return onTcp_; }
+  uint8_t switches() const { return switches_; }
   int readByte();
   void write(const char *bytes, uint16_t length, uint32_t nowMs);
   void flush();
@@ -60,6 +61,7 @@ class LinkMux {
   ByteLink &usb_;
   TcpLink &tcp_;
   bool onTcp_ = false;
+  uint8_t switches_ = 0;
   uint8_t in_[64];
   uint8_t inLen_ = 0;
   uint8_t inPos_ = 0;

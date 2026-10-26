@@ -217,6 +217,7 @@ class MuxHal final : public SimCanHal {
   }
   void flush() override { mux.flush(); }
   bool linkTrusted() override { return !mux.onTcp(); }
+  uint8_t linkSwitches() override { return mux.switches(); }
   bool wifiStatus(uint8_t index, char *out, uint8_t capacity) override {
     if (index > 0) return false;
     snprintf(out, capacity, "WIFI TEST");
@@ -282,6 +283,55 @@ static void guard_write_is_refused_over_tcp(void) {
   TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>OK\r\r>WRITE\r\r>", hal.usb.out.c_str());
 }
 
+static void a_line_the_phone_left_unfinished_does_not_run_on_usb(void) {
+  MuxHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  hal.usb.out.clear();
+  hal.tcp.connect("ATE0\rAT#GUARD WRITE");
+  hal.poll();
+  elm.service();
+
+  hal.tcp.open = false;
+  elm.service();
+  hal.poll();
+  hal.usb.in = "\rAT#GUARD\r";
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("?\r\r>READ\r\r>", hal.usb.out.c_str());
+}
+
+static void a_bare_cr_on_usb_does_not_repeat_the_phone_request(void) {
+  MuxHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  hal.usb.out.clear();
+  hal.tcp.connect("ATE0\rATSP6\r0100\r");
+  hal.poll();
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>OK\r\r>41 00 BE 1F A8 12\r\r>",
+                           hal.tcp.all().c_str());
+
+  hal.tcp.open = false;
+  elm.service();
+  hal.poll();
+  hal.usb.in = "\r";
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("?\r\r>", hal.usb.out.c_str());
+}
+
+static void the_phone_first_command_ignores_a_line_half_typed_on_usb(void) {
+  MuxHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  hal.usb.in = "ATI";
+  elm.service();
+
+  hal.tcp.connect("ATZ\r");
+  hal.poll();
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("ATZ\r\rELM327 v1.5\r\r>", hal.tcp.all().c_str());
+}
+
 static void monitor_over_tcp_streams_and_stops_when_the_client_goes(void) {
   MuxHal hal(renaultDaciaCar());
   Elm elm(hal);
@@ -335,6 +385,9 @@ int main(int, char **) {
   RUN_TEST(held_tcp_output_goes_after_20_ms);
   RUN_TEST(elm_answers_on_the_session_link_only);
   RUN_TEST(guard_write_is_refused_over_tcp);
+  RUN_TEST(a_line_the_phone_left_unfinished_does_not_run_on_usb);
+  RUN_TEST(a_bare_cr_on_usb_does_not_repeat_the_phone_request);
+  RUN_TEST(the_phone_first_command_ignores_a_line_half_typed_on_usb);
   RUN_TEST(monitor_over_tcp_streams_and_stops_when_the_client_goes);
   RUN_TEST(at_wifi_prints_the_hal_lines);
   return UNITY_END();

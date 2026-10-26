@@ -94,6 +94,8 @@ void Mcp2515Hal::flush() { links_.flush(); }
 
 bool Mcp2515Hal::linkTrusted() { return !links_.onTcp(); }
 
+uint8_t Mcp2515Hal::linkSwitches() { return links_.switches(); }
+
 bool Mcp2515Hal::wifiStatus(uint8_t index, char *out, uint8_t capacity) {
   return wifi_.statusLine(index, out, capacity);
 }

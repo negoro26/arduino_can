@@ -62,6 +62,10 @@ class Hal : public BusSide {
   // false while the session runs over a link anyone in WiFi range can reach;
   // AT#GUARD WRITE is refused there.
   virtual bool linkTrusted() = 0;
+  // Counts each move of the session to another link (wrapping). On a change
+  // the core drops the unfinished line and the request a bare CR repeats, so
+  // nothing one link sent runs on, or with the trust of, the next.
+  virtual uint8_t linkSwitches() = 0;
   // AT#WIFI: line `index` (from 0) of the WiFi state into `out`; false past
   // the last line.
   virtual bool wifiStatus(uint8_t index, char *out, uint8_t capacity) = 0;

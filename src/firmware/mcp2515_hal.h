@@ -40,6 +40,7 @@ class Mcp2515Hal : public Hal {
   void write(const char *bytes, uint16_t length) override;
   void flush() override;
   bool linkTrusted() override;
+  uint8_t linkSwitches() override;
   bool wifiStatus(uint8_t index, char *out, uint8_t capacity) override;
   uint32_t nowMs() override;
   void idleUntil(Deadline d) override;

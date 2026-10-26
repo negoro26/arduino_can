@@ -63,6 +63,7 @@ class TestHal final : public SimCanHal {
 
   void flush() override {}
   bool linkTrusted() override { return linkTrusted_; }
+  uint8_t linkSwitches() override { return 0; }
   bool wifiStatus(uint8_t index, char *out, uint8_t capacity) override {
     if (index >= wifi_.size()) return false;
     snprintf(out, capacity, "%s", wifi_[index].c_str());

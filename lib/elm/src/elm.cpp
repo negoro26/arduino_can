@@ -56,6 +56,12 @@ void Elm::begin() {
 }
 
 void Elm::service() {
+  const uint8_t switches = hal_.linkSwitches();
+  if (switches != linkSwitches_) {
+    linkSwitches_ = switches;
+    line_.clear();
+    last_[0] = '\0';
+  }
   for (int c; (c = hal_.readByte()) >= 0;) onByte(static_cast<uint8_t>(c));
 }
 

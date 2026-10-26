@@ -143,7 +143,7 @@ The MKR1000's WiFi chip (WINC1500) runs an access point that behaves like a WiFi
 3. Connect.
 
 - One phone at a time. The WINC1500 accepts a single station.
-- While a phone is connected, it owns the adapter and USB input waits. USB works again when the phone disconnects.
+- While a phone is connected, it owns the adapter and USB input waits. USB works again when the phone disconnects. When one side takes over from the other, a line the other left without its CR is dropped, and a bare CR does not repeat the other side's last request.
 - iPhone apps work over WiFi. They need the Local Network permission. iPhones cannot use the USB port.
 - `AT#WIFI` over USB prints the network, the WINC firmware version, and the connected phone's address.
 - To change the network name or password, build with your own values. The password needs at least 8 characters, or the build fails:
@@ -244,7 +244,7 @@ Code layout:
 - `lib/elm/src/link_mux.*` decides which link (USB or a TCP client) owns the ELM session. The firmware and the simulator share it.
 
 ```sh
-pio test -e native                                         # 119 cases, no board, no car
+pio test -e native                                         # 122 cases, no board, no car
 pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim [--tcp 127.0.0.1:35000]
 uv run tools/compat/check_clients.py --sim .pio/build/sim/program [--tcp]
 uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo

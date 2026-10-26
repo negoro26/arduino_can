@@ -50,6 +50,7 @@ class Elm {
   LinkState link_;
   LineBuffer line_;
   char last_[kLineMax + 1] = {};
+  uint8_t linkSwitches_ = 0;
   RxLog log_;
 };
 

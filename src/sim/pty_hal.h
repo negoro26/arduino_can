@@ -33,6 +33,7 @@ class PtyHal final : public SimCanHal {
   }
   void flush() override { links_.flush(); }
   bool linkTrusted() override { return !links_.onTcp(); }
+  uint8_t linkSwitches() override { return links_.switches(); }
   bool wifiStatus(uint8_t index, char *out, uint8_t capacity) override {
     return tcp_.statusLine(index, out, capacity);
   }
