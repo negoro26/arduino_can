@@ -36,6 +36,29 @@ struct CanFrame {
 
 bool sameFrame(const CanFrame &a, const CanFrame &b);  // id, dlc, dlc bytes
 
+template <uint8_t Capacity>
+class SeenIds {
+ public:
+  bool contains(CanId id) const {
+    for (uint8_t i = 0; i < count_; ++i) {
+      if (ids_[i] == id) return true;
+    }
+    return false;
+  }
+  bool add(CanId id) {
+    if (contains(id) || count_ >= Capacity) return false;
+    ids_[count_++] = id;
+    return true;
+  }
+  uint8_t count() const { return count_; }
+  bool isFull() const { return count_ >= Capacity; }
+  CanId at(uint8_t i) const { return ids_[i]; }
+
+ private:
+  CanId ids_[Capacity];
+  uint8_t count_ = 0;
+};
+
 // ISO 15765-2 reading of data[0].
 enum class Pci : uint8_t { Single, First, Consecutive, FlowControl, Other };
 Pci pciOf(const CanFrame &f);

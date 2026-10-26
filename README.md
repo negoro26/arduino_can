@@ -132,7 +132,14 @@ The firmware answers `?` to `AT BRD` (USB has no baud rate). That is why ddt4all
 
 Every frame the adapter transmits is classified by its diagnostic service before it reaches the bus. A frame above the current tier is not sent, and the adapter prints `BLOCKED` (ddt4all and pyren show that as an empty answer).
 
-Below `WRITE` the adapter transmits only on diagnostic CAN ids. Those are the 11-bit ids `600` to `7FF` and the 29-bit ids `18DAxxxx` and `18DBxxxx` (ISO 15765-4 normal fixed addressing, for example `18DA10F1` and `18DB33F1`). A frame on any other id needs `WRITE`, whatever its bytes are.
+Below `WRITE` two rules decide which CAN ids the adapter may transmit on. A frame that breaks either one needs `WRITE`, whatever its bytes are.
+
+- The id must be a diagnostic id. Those are the 11-bit ids `600` to `7FF` and the 29-bit ids `18DAxxxx` and `18DBxxxx` (ISO 15765-4 normal fixed addressing, for example `18DA10F1` and `18DB33F1`).
+- The id must not be one the adapter has heard as bus traffic. Some cars use `6xx` ids for normal traffic. A Scenic II cluster takes `60D` and `625`, for example. The adapter records every id it hears in its listen-only windows. Those are listen-before-talk, `ATMA` and `AT#SURVEY`. Answers to its own requests are not recorded.
+
+The adapter keeps up to 128 heard ids. Once the list is full, further ids are not recorded. Like the tier, the list lives in RAM until power-up. ATZ, ATWS and ATD keep it, and unplugging the board clears it.
+
+Listen-before-talk lasts only 60 ms. A slow periodic frame on a `6xx` id can fall outside that window and go unrecorded. It is caught only if something listened longer first. `tools/canscan.py` does, with its 1.5 s `ATMA` survey.
 
 | Tier | Allows |
 |---|---|
@@ -148,7 +155,7 @@ Below `WRITE` the adapter transmits only on diagnostic CAN ids. Those are the 11
 ## How the adapter behaves on the bus
 
 - Between requests the MCP2515 is in listen-only mode. It does not ACK frames and cannot send error frames.
-- Before the first transmission at a bitrate, it listens for 60 ms. If it sees errors but no frames, the bitrate is wrong. It then prints `CAN ERROR` and sends nothing.
+- Before the first transmission at a bitrate, it listens for 60 ms. If it sees errors but no frames, the bitrate is wrong. It then prints `CAN ERROR` and sends nothing. Every id it hears in that window counts as traffic for the [write guard](#write-guard).
 - Every transmission is one-shot. A frame that hits a bus error is never retried by the chip. On this board, measured with nothing connected: in one-shot mode the attempt ended after 93 us, while without one-shot the chip retried for the full 20 ms test window.
 - A frame is retried only after a clean arbitration loss, at most 2 times (3 attempts in all). The attempt must end with lost arbitration and no transmit error, and the receive error counter and the message error flag must show no bus error during it. Such a loss means another node won the bus, so nothing was corrupted.
 - Any other failed attempt is not retried. In one-shot mode the chip also reports lost arbitration after a bus error. On this board with nothing connected at 500 kbit, an attempt ends that way and the receive error counter rises by 9.
@@ -191,7 +198,7 @@ Code layout:
 - `src/firmware` holds the MCP2515 adapter, and `src/sim` holds the PTY host.
 
 ```sh
-pio test -e native                                         # 101 cases, no board, no car
+pio test -e native                                         # 107 cases, no board, no car
 pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim
 uv run tools/compat/check_clients.py --sim .pio/build/sim/program
 uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo

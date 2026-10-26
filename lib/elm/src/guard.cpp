@@ -53,7 +53,7 @@ static bool isDiagnosticId(CanId id) {
 Tier Guard::classify(const CanFrame &f) const {
   // A raw frame on an operational id can drive the car whatever its PCI byte
   // looks like.
-  if (!isDiagnosticId(f.id)) return Tier::Write;
+  if (!isDiagnosticId(f.id) || heard_.contains(f.id)) return Tier::Write;
   switch (pciOf(f)) {
     case Pci::FlowControl:
       return Tier::Read;

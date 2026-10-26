@@ -170,6 +170,7 @@ void Elm::monitor() {
       flushAt = Deadline::never();
       continue;
     }
+    guard_.heard(rx.id);
     if (!acc.accepts(rx.id)) continue;
     TextLine lines[2];
     const uint8_t n = fmt.format(rx, lines);
@@ -200,7 +201,7 @@ void Elm::survey() {
   Bitrate foundRate = Bitrate::k500;
   for (Bitrate rate : kSurveyRates) {
     RateReport report;
-    if (!surveyRate(hal_, rate, kSurveyWindowMs, &report)) {
+    if (!surveyRate(hal_, guard_, rate, kSurveyWindowMs, &report)) {
       print("STOPPED");
       return;
     }

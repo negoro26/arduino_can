@@ -160,6 +160,91 @@ static void raw_frame_on_an_operational_id_is_blocked(void) {
   TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
 }
 
+static const CanFrame kRead622 = frame(CanId::std11(0x622), {0x03, 0x22, 0xF1, 0x90});
+
+static void ids_heard_as_traffic_are_refused_below_write(void) {
+  Guard g;
+  TEST_ASSERT_TRUE(g.permits(kRead622));
+  g.heard(CanId::std11(0x622));
+  for (Tier t : {Tier::Read, Tier::Clear}) {
+    g.setTier(t);
+    TEST_ASSERT_FALSE(g.permits(kRead622));
+    TEST_ASSERT_TRUE(g.permits(frame(k7E0, {0x03, 0x22, 0xF1, 0x90})));
+  }
+  g.setTier(Tier::Write);
+  ClearedFrame out;
+  TEST_ASSERT_TRUE(g.admit(kRead622, &out));
+}
+
+static void heard_ids_are_recorded_up_to_capacity(void) {
+  Guard g;
+  for (uint8_t i = 0; i < 10; ++i) g.heard(CanId::std11(0x600));
+  for (uint16_t i = 0; i < Guard::kHeardCapacity; ++i) g.heard(CanId::std11(0x600 + i));
+  TEST_ASSERT_FALSE_MESSAGE(g.permits(frame(CanId::std11(0x600 + Guard::kHeardCapacity - 1),
+                                            {0x03, 0x22, 0xF1, 0x90})),
+                            "a repeated id takes one slot");
+  g.heard(k7E0);
+  TEST_ASSERT_TRUE_MESSAGE(g.permits(frame(k7E0, {0x03, 0x22, 0xF1, 0x90})),
+                           "the set is full");
+}
+
+static void listen_before_talk_traffic_id_needs_write(void) {
+  TestHal hal(renaultDaciaCar());
+  Elm elm(hal);
+  elm.begin();
+  for (const char *cmd : {"ATE0", "ATSP6", "ATSH622"}) run(hal, elm, cmd);
+  // The listen-before-talk window hears the car's 622 broadcast.
+  TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "22F190").c_str());
+  run(hal, elm, "AT#GUARD CLEAR");
+  TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "22F190").c_str());
+  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+  run(hal, elm, "AT#GUARD WRITE");
+  TEST_ASSERT_EQUAL_STRING("NO DATA\r\r>", ask(hal, elm, "22F190").c_str());
+  TEST_ASSERT_EQUAL_size_t(1, hal.wire().size());
+  TEST_ASSERT_TRUE(hal.wire()[0].second.id == CanId::std11(0x622));
+  for (const char *cmd : {"AT#GUARD READ", "ATSH7E0"}) run(hal, elm, cmd);
+  TEST_ASSERT_EQUAL_STRING("41 00 BE 1F A8 12\r\r>", ask(hal, elm, "0100").c_str());
+}
+
+static void monitored_traffic_id_is_refused_until_power_up(void) {
+  TestHal hal(renaultDaciaCar());
+  Elm elm(hal);
+  elm.begin();
+  for (const char *cmd : {"ATE0", "ATSP6"}) run(hal, elm, cmd);
+  hal.type("ATMA\r");
+  hal.typeAt(hal.now() / 1000 + 25, "\r");
+  elm.service();
+  for (const char *cmd : {"ATZ", "ATWS", "ATD", "ATE0", "ATSP6", "ATSH622"}) run(hal, elm, cmd);
+  const uint32_t start = hal.now();
+  TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "22F190").c_str());
+  TEST_ASSERT_EQUAL_UINT32_MESSAGE(start, hal.now(), "refused before listening again");
+  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+  run(hal, elm, "ATSH7E0");
+  TEST_ASSERT_EQUAL_STRING("41 00 BE 1F A8 12\r\r>", ask(hal, elm, "0100").c_str());
+}
+
+static void surveyed_traffic_id_is_refused(void) {
+  TestHal hal(renaultDaciaCar());
+  Elm elm(hal);
+  elm.begin();
+  for (const char *cmd : {"ATE0", "AT#SURVEY", "ATSP6", "ATSH622"}) run(hal, elm, cmd);
+  const uint32_t start = hal.now();
+  TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "22F190").c_str());
+  TEST_ASSERT_EQUAL_UINT32(start, hal.now());
+  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+}
+
+static void answers_to_a_request_are_not_traffic(void) {
+  TestHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  for (const char *cmd : {"ATE0", "ATSP6", "ATSH7E0"}) run(hal, elm, cmd);
+  TEST_ASSERT_EQUAL_STRING("41 00 BE 1F A8 12\r\r>", ask(hal, elm, "0100").c_str());
+  run(hal, elm, "ATSH7E8");
+  TEST_ASSERT_EQUAL_STRING("NO DATA\r\r>", ask(hal, elm, "0100").c_str());
+  TEST_ASSERT_TRUE(hal.wire().back().second.id == CanId::std11(0x7E8));
+}
+
 static void tier_survives_reset_commands_and_is_settable(void) {
   TestHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
@@ -193,6 +278,12 @@ int main(int, char **) {
   RUN_TEST(only_diagnostic_ids_pass_below_write);
   RUN_TEST(reads_on_diagnostic_ids_pass_at_read);
   RUN_TEST(raw_frame_on_an_operational_id_is_blocked);
+  RUN_TEST(ids_heard_as_traffic_are_refused_below_write);
+  RUN_TEST(heard_ids_are_recorded_up_to_capacity);
+  RUN_TEST(listen_before_talk_traffic_id_needs_write);
+  RUN_TEST(monitored_traffic_id_is_refused_until_power_up);
+  RUN_TEST(surveyed_traffic_id_is_refused);
+  RUN_TEST(answers_to_a_request_are_not_traffic);
   RUN_TEST(tier_survives_reset_commands_and_is_settable);
   return UNITY_END();
 }

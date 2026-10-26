@@ -40,11 +40,12 @@ struct LinkState {
 
 enum class LbtVerdict : uint8_t { Verified, Silent, Mismatch, Fault };
 
-// ~60 ms ListenOnly + Acceptance::all() from a freshly reset controller.
-// Frames decoded -> Verified; errors (errorEvents or rec) without frames ->
-// Mismatch; nothing -> Silent; controller refused -> Fault.
-LbtVerdict listenBeforeTalk(BusSide &bus, LinkState &link, Bitrate rate,
-                            bool *interrupted);
+// The full kLbtWindowMs in ListenOnly + Acceptance::all() from a freshly reset
+// controller. Every frame's id goes to guard.heard(). Frames decoded ->
+// Verified; errors (errorEvents or rec) without frames -> Mismatch; nothing ->
+// Silent; controller refused -> Fault.
+LbtVerdict listenBeforeTalk(BusSide &bus, Guard &guard, LinkState &link,
+                            Bitrate rate, bool *interrupted);
 constexpr uint16_t kLbtWindowMs = 60;
 
 struct RxLog {
@@ -72,6 +73,7 @@ enum class Outcome : uint8_t {
 //   f = requestFrame(); guard.admit(f) refused        -> Blocked
 //   rate unverified: listenBeforeTalk()
 //       interrupted -> Stopped; Mismatch/Fault        -> CanError (nothing sent)
+//       guard.admit(f) again, it may have heard f.id  -> Blocked
 //   drain stale frames; Normal (one-shot) with receiveFilter()
 //   canSend fails -> verdict dropped                  -> CanError
 //   R0 / count digit 0                                -> Sent
@@ -105,29 +107,6 @@ bool searchable(const Guard &guard, const Settings &s, const HexRequest &req);
 Outcome search(BusSide &bus, Guard &guard, LinkState &link, Settings &s,
                const HexRequest &req, RxLog &log);
 
-template <uint8_t Capacity>
-class SeenIds {
- public:
-  bool contains(CanId id) const {
-    for (uint8_t i = 0; i < count_; ++i) {
-      if (ids_[i] == id) return true;
-    }
-    return false;
-  }
-  bool add(CanId id) {
-    if (contains(id) || count_ >= Capacity) return false;
-    ids_[count_++] = id;
-    return true;
-  }
-  uint8_t count() const { return count_; }
-  bool isFull() const { return count_ >= Capacity; }
-  CanId at(uint8_t i) const { return ids_[i]; }
-
- private:
-  CanId ids_[Capacity];
-  uint8_t count_ = 0;
-};
-
 struct RateReport {
   bool setupFailed = false;
   uint32_t frames = 0;
@@ -135,8 +114,8 @@ struct RateReport {
   SeenIds<16> ids;
 };
 
-// false if interrupted.
-bool surveyRate(BusSide &bus, Bitrate rate, uint16_t windowMs,
+// false if interrupted. Every frame's id goes to guard.heard().
+bool surveyRate(BusSide &bus, Guard &guard, Bitrate rate, uint16_t windowMs,
                 RateReport *out);
 
 enum class Wiring : uint8_t { BitrateFound, LiveBusUndecoded, NotConnected };

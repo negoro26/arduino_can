@@ -42,8 +42,8 @@ void LinkState::close(BusSide &bus) {
   talk = Talk::Unchecked;
 }
 
-LbtVerdict listenBeforeTalk(BusSide &bus, LinkState &link, Bitrate rate,
-                            bool *interrupted) {
+LbtVerdict listenBeforeTalk(BusSide &bus, Guard &guard, LinkState &link,
+                            Bitrate rate, bool *interrupted) {
   *interrupted = false;
   // Closing first makes the controller start from reset, so the error
   // counters measured below belong to this window only.
@@ -52,13 +52,19 @@ LbtVerdict listenBeforeTalk(BusSide &bus, LinkState &link, Bitrate rate,
     return LbtVerdict::Fault;
   }
   const Deadline d = Deadline::after(bus.nowMs(), kLbtWindowMs);
+  bool decoded = false;
   CanFrame rx;
-  const Wake w = await(bus, d, &rx);
-  if (w == Wake::Interrupted) {
-    *interrupted = true;
-    return LbtVerdict::Silent;
+  for (;;) {
+    const Wake w = await(bus, d, &rx);
+    if (w == Wake::Timeout) break;
+    if (w == Wake::Interrupted) {
+      *interrupted = true;
+      return LbtVerdict::Silent;
+    }
+    guard.heard(rx.id);
+    decoded = true;
   }
-  if (w == Wake::Frame) return LbtVerdict::Verified;
+  if (decoded) return LbtVerdict::Verified;
   const CanHealth h = bus.canHealth();
   return (h.errorEvents > 0 || h.rec > 0) ? LbtVerdict::Mismatch
                                           : LbtVerdict::Silent;
@@ -128,7 +134,8 @@ Outcome converse(BusSide &bus, Guard &guard, LinkState &link,
   if (!link.open || link.rate != rate ||
       link.talk != LinkState::Talk::Allowed) {
     bool interrupted = false;
-    const LbtVerdict v = listenBeforeTalk(bus, link, rate, &interrupted);
+    const LbtVerdict v =
+        listenBeforeTalk(bus, guard, link, rate, &interrupted);
     if (interrupted) return Outcome::Stopped;
     if (v == LbtVerdict::Fault) return Outcome::CanError;
     if (v == LbtVerdict::Mismatch) {
@@ -136,6 +143,8 @@ Outcome converse(BusSide &bus, Guard &guard, LinkState &link,
       return Outcome::CanError;
     }
     link.talk = LinkState::Talk::Allowed;
+    // The window may have heard the request id as traffic.
+    if (!guard.admit(request, &cleared)) return Outcome::Blocked;
   }
 
   CanFrame rx;
@@ -238,7 +247,7 @@ Outcome search(BusSide &bus, Guard &guard, LinkState &link, Settings &s,
   return tried ? Outcome::UnableToConnect : Outcome::Blocked;
 }
 
-bool surveyRate(BusSide &bus, Bitrate rate, uint16_t windowMs,
+bool surveyRate(BusSide &bus, Guard &guard, Bitrate rate, uint16_t windowMs,
                 RateReport *out) {
   *out = RateReport{};
   bus.canClose();
@@ -258,6 +267,7 @@ bool surveyRate(BusSide &bus, Bitrate rate, uint16_t windowMs,
       break;
     }
     ++out->frames;
+    guard.heard(rx.id);
     out->ids.add(rx.id);
   }
   const CanHealth h = bus.canHealth();

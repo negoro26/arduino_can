@@ -8,7 +8,9 @@
 // read as the ISO-TP PCI. CAF1 frames are built (PCI included) before they are
 // admitted, so one rule covers CAF0 and CAF1. Below WRITE only diagnostic ids
 // pass at all: 11-bit 0x600-0x7FF, and 29-bit 18DAxxxx/18DBxxxx (ISO 15765-4
-// normal fixed addressing).
+// normal fixed addressing). Cars also use 0x6xx for normal traffic (a Scenic
+// II cluster takes 0x60D and 0x625), so an id heard as traffic in a
+// listen-only window is refused below WRITE too.
 
 #ifndef ELM_GUARD_H
 #define ELM_GUARD_H
@@ -40,7 +42,8 @@ class ClearedFrame {
 };
 
 // Lives in Elm next to (not inside) Settings: ATZ/ATWS/ATD cannot reset it;
-// only power-up (construction) and AT#GUARD change the tier.
+// only power-up (construction) and AT#GUARD change the tier, and only
+// power-up forgets the heard ids.
 class Guard {
  public:
   Tier tier() const { return tier_; }
@@ -48,6 +51,13 @@ class Guard {
 
   Tier classify(const CanFrame &f) const;
   bool permits(const CanFrame &f) const { return classify(f) <= tier_; }
+
+  // An id seen as bus traffic in a listen-only window (listen-before-talk,
+  // ATMA, AT#SURVEY). Never one received while a request awaits its answer:
+  // those frames are answers to us. Once kHeardCapacity ids are recorded,
+  // further ones are not.
+  void heard(CanId id) { heard_.add(id); }
+  static constexpr uint8_t kHeardCapacity = 128;
 
   // THE choke point. Fills *out iff `f` may be transmitted. A first frame is
   // remembered (even when refused) so its consecutive frames inherit its
@@ -60,6 +70,7 @@ class Guard {
   CanId lastFirstId_;
   Tier lastFirstTier_ = Tier::Write;
   bool haveFirst_ = false;
+  SeenIds<kHeardCapacity> heard_;
 };
 
 #endif  // ELM_GUARD_H
