@@ -148,7 +148,8 @@ Every frame the adapter transmits is classified by its diagnostic service before
 - Between requests the MCP2515 is in listen-only mode. It does not ACK frames and cannot send error frames.
 - Before the first transmission at a bitrate, it listens for 60 ms. If it sees errors but no frames, the bitrate is wrong. It then prints `CAN ERROR` and sends nothing.
 - Every transmission is one-shot. A frame that hits a bus error is never retried by the chip. On this board, measured with nothing connected: in one-shot mode the attempt ended after 93 us, while without one-shot the chip retried for the full 20 ms test window.
-- Only lost arbitration is retried, at most 3 times. Another node won the bus, so nothing was corrupted.
+- A frame is retried only after a clean arbitration loss, at most 2 times (3 attempts in all). The attempt must end with lost arbitration and no transmit error, and the receive error counter and the message error flag must show no bus error during it. Such a loss means another node won the bus, so nothing was corrupted.
+- Any other failed attempt is not retried. In one-shot mode the chip also reports lost arbitration after a bus error. On this board with nothing connected at 500 kbit, an attempt ends that way and the receive error counter rises by 9.
 
 ## Commands
 
@@ -187,7 +188,7 @@ Code layout:
 - `src/firmware` holds the MCP2515 adapter, and `src/sim` holds the PTY host.
 
 ```sh
-pio test -e native                                         # 88 cases, no board, no car
+pio test -e native                                         # 95 cases, no board, no car
 pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim
 uv run tools/compat/check_clients.py --sim .pio/build/sim/program
 uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo

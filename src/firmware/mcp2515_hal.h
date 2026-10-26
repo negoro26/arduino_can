@@ -6,7 +6,8 @@
 //   - One-shot mode set by a raw CANCTRL write. The library's
 //     setNormalOneShotMode() compares CANSTAT.OPMOD against a value that
 //     includes the OSM bit, so it always spins 10 ms and returns ERROR_FAIL.
-//   - Arbitration loss (MLOA) is retried at most 3 times; a bus error never.
+//   - A frame is retried (3 attempts in all) only after a clean arbitration
+//     loss, never after a bus error (tx_attempt.h).
 //   - RX buffers are read in arrival order under BUKT rollover (rx_order.h).
 //   - Registers the library keeps private (CANINTF, EFLG, TXB0CTRL, CANSTAT)
 //     are read with raw SPI, as the probe did.

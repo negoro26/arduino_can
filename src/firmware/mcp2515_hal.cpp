@@ -3,6 +3,8 @@
 #include <SPI.h>
 #include <string.h>
 
+#include "tx_attempt.h"
+
 namespace {
 
 // Shield facts (ASX00005 schematic): CS = D3, 16 MHz crystal.
@@ -26,12 +28,8 @@ constexpr uint8_t kRegTxb0ctrl = 0x30;
 constexpr uint8_t kIntfRx0 = 0x01;
 constexpr uint8_t kIntfRx1 = 0x02;
 constexpr uint8_t kIntfErr = 0x20;
-constexpr uint8_t kIntfMerr = 0x80;
 constexpr uint8_t kEflgRxOverflow = 0xC0;  // RX1OVR | RX0OVR
 
-constexpr uint8_t kTxbAbtf = 0x40;
-constexpr uint8_t kTxbMloa = 0x20;
-constexpr uint8_t kTxbTxerr = 0x10;
 constexpr uint8_t kTxbTxreq = 0x08;
 
 constexpr uint8_t kCtrlReqopMask = 0xE0;
@@ -41,7 +39,6 @@ constexpr uint8_t kReqopLoopback = 0x40;
 constexpr uint8_t kReqopListenOnly = 0x60;
 constexpr uint8_t kReqopConfig = 0x80;
 
-constexpr uint8_t kMaxArbitrationAttempts = 3;
 // Waiting for bus idle plus one frame at 250 kbit fits easily; a frame still
 // pending after this is aborted and reported as failed.
 constexpr uint32_t kTxTimeoutUs = 10000;
@@ -178,7 +175,11 @@ TxStatus Mcp2515Hal::sendRaw(const CanFrame &f) {
   tx.can_id = f.id.isExt() ? (f.id.value() | CAN_EFF_FLAG) : f.id.value();
   tx.can_dlc = f.dlc;
   memcpy(tx.data, f.data, sizeof tx.data);
-  for (uint8_t attempt = 0; attempt < kMaxArbitrationAttempts; ++attempt) {
+  for (uint8_t attempt = 1;; ++attempt) {
+    // Clears (and counts) any earlier MERRF, so the read after the attempt
+    // shows only errors raised during it.
+    serviceErrors(rawRead(kRegCanintf));
+    const uint8_t recBefore = rawRead(kRegRec);
     // Setting TXREQ clears ABTF/MLOA/TXERR, so the library's immediate flag
     // check is meaningless; completion is polled below instead.
     mcp_.sendMessage(MCP2515::TXB0, &tx);
@@ -191,10 +192,14 @@ TxStatus Mcp2515Hal::sendRaw(const CanFrame &f) {
       rawModify(kRegTxb0ctrl, kTxbTxreq, 0);
       return TxStatus::Failed;
     }
-    if (ctrl & kTxbMloa) continue;  // lost arbitration: our frame never went out
-    return (ctrl & (kTxbTxerr | kTxbAbtf)) ? TxStatus::Failed : TxStatus::Sent;
+    const uint8_t recAfter = rawRead(kRegRec);
+    const uint8_t intf = rawRead(kRegCanintf);
+    switch (judgeTxAttempt(ctrl, recBefore, recAfter, intf, attempt)) {
+      case TxVerdict::Sent: return TxStatus::Sent;
+      case TxVerdict::Failed: return TxStatus::Failed;
+      case TxVerdict::Retry: break;
+    }
   }
-  return TxStatus::Failed;
 }
 
 void Mcp2515Hal::serviceErrors(uint8_t intf) {
