@@ -169,6 +169,10 @@ static void periodic_traffic_skips_backlog_after_a_pause(void) {
   VirtualCar car(renaultDaciaCar());
   const std::vector<Timed> got = runCar(car, 1800000000u, 1800000000u);
   TEST_ASSERT_TRUE(got.size() <= 8);
+}
+
+static void the_car_owns_its_reply_and_traffic_ids_only(void) {
+  VirtualCar car(renaultDaciaCar());
   TEST_ASSERT_TRUE(car.transmits(CanId::std11(0x622)));
   TEST_ASSERT_TRUE(car.transmits(CanId::std11(0x765)));
   TEST_ASSERT_FALSE(car.transmits(CanId::std11(0x745)));
@@ -240,6 +244,25 @@ static void listen_only_cannot_send_and_acceptance_filters(void) {
   TEST_ASSERT_FALSE(bus.health().rxOverflow);
 }
 
+static void a_mode_change_keeps_tec_and_rec_and_a_reopen_clears_them(void) {
+  VirtualCar car(renaultDaciaCar());
+  SimBus bus(car, 2);
+  bus.open(Bitrate::k250, CanMode::ListenOnly, Acceptance::all(), 0);
+  bus.advance(60000);
+  const uint8_t rec = bus.health().rec;
+  TEST_ASSERT_TRUE(rec > 0);
+  bus.open(Bitrate::k250, CanMode::Normal, Acceptance::all(), 60000);
+  TEST_ASSERT_EQUAL_UINT8_MESSAGE(rec, bus.health().rec, "the MCP2515 changes mode without a reset");
+  TEST_ASSERT_EQUAL_UINT16(0, bus.health().errorEvents);
+  bus.send(frame(0x7E0, {0x02, 0x10, 0xC0}), 60000);
+  bus.open(Bitrate::k250, CanMode::ListenOnly, Acceptance::all(), 60000);
+  TEST_ASSERT_EQUAL_UINT8(8, bus.health().tec);
+  bus.close(60000);
+  bus.open(Bitrate::k250, CanMode::ListenOnly, Acceptance::all(), 60000);
+  TEST_ASSERT_EQUAL_UINT8(0, bus.health().tec);
+  TEST_ASSERT_EQUAL_UINT8(0, bus.health().rec);
+}
+
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(single_frame_request_is_answered_after_the_latency);
@@ -252,9 +275,11 @@ int main(int, char **) {
   RUN_TEST(airbag_answers_pending_first);
   RUN_TEST(abs_ignores_extended_session);
   RUN_TEST(periodic_traffic_skips_backlog_after_a_pause);
+  RUN_TEST(the_car_owns_its_reply_and_traffic_ids_only);
   RUN_TEST(two_buffers_overflow_on_the_third_frame);
   RUN_TEST(rollover_order_returns_frames_oldest_first);
   RUN_TEST(wrong_bitrate_sees_errors_and_cannot_send);
   RUN_TEST(listen_only_cannot_send_and_acceptance_filters);
+  RUN_TEST(a_mode_change_keeps_tec_and_rec_and_a_reopen_clears_them);
   return UNITY_END();
 }

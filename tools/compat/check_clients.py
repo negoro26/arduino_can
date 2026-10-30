@@ -547,7 +547,6 @@ def vin_of(lines: list[str]) -> str:
 def check_guard(port: str, results: Results) -> None:
     with Adapter(port) as elm:
         elm.setup("ATE0", "ATSP6")
-        # This check raises the tier and sends DTC-clear requests: only ever to the virtual car.
         if not results.check("guard target is the virtual car (OBD VIN)", VIN, vin_of(elm.send("0902"))):
             note("guard: not sending clear requests to an unknown car")
             return

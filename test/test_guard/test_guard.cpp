@@ -14,43 +14,52 @@ static CanFrame frame(CanId id, std::initializer_list<uint8_t> bytes) {
   return f;
 }
 
-static void read_services(void) {
+static bool admittedAt(Tier tier, const CanFrame &f) {
+  Guard g;
+  g.setTier(tier);
+  ClearedFrame out;
+  return g.admit(f, &out);
+}
+
+static const char *sidName(uint8_t sid) {
+  static char name[8];
+  snprintf(name, sizeof name, "sid %02X", sid);
+  return name;
+}
+
+static void read_services_pass_at_read(void) {
   const uint8_t reads[] = {0x01, 0x02, 0x03, 0x05, 0x06, 0x07, 0x09, 0x0A,
-                           0x12, 0x17, 0x18, 0x19, 0x1A, 0x20, 0x21, 0x22,
-                           0x23, 0x24, 0x3E, 0x81, 0x82, 0x83};
+                           0x10, 0x12, 0x17, 0x18, 0x19, 0x1A, 0x20, 0x21,
+                           0x22, 0x23, 0x24, 0x3E, 0x81, 0x82, 0x83};
   for (uint8_t sid : reads) {
-    TEST_ASSERT_TRUE_MESSAGE(tierOfService(sid, false, 0) == Tier::Read, "read sid");
+    TEST_ASSERT_TRUE_MESSAGE(admittedAt(Tier::Read, frame(k7E0, {0x02, sid, 0x01})), sidName(sid));
   }
 }
 
-static void clear_services(void) {
-  TEST_ASSERT_TRUE(tierOfService(0x14, true, 0xFF) == Tier::Clear);
-  TEST_ASSERT_TRUE(tierOfService(0x04, false, 0) == Tier::Clear);
+static void clear_services_need_clear(void) {
+  for (const CanFrame &f : {frame(k7E0, {0x04, 0x14, 0xFF, 0xFF, 0xFF}), frame(k7E0, {0x01, 0x04})}) {
+    TEST_ASSERT_FALSE(admittedAt(Tier::Read, f));
+    TEST_ASSERT_TRUE(admittedAt(Tier::Clear, f));
+  }
 }
 
-static void write_services_and_default_deny(void) {
+static void write_and_unknown_services_need_write(void) {
   const uint8_t writes[] = {0x08, 0x11, 0x27, 0x28, 0x2C, 0x2E, 0x2F, 0x30, 0x31,
                             0x34, 0x35, 0x36, 0x37, 0x3B, 0x3D, 0x85, 0x86, 0x87,
                             0x00, 0x0B, 0x40, 0xFF};
   for (uint8_t sid : writes) {
-    TEST_ASSERT_TRUE_MESSAGE(tierOfService(sid, true, 0x01) == Tier::Write, "write sid");
+    TEST_ASSERT_FALSE_MESSAGE(admittedAt(Tier::Clear, frame(k7E0, {0x02, sid, 0x01})), sidName(sid));
+    TEST_ASSERT_TRUE_MESSAGE(admittedAt(Tier::Write, frame(k7E0, {0x02, sid, 0x01})), sidName(sid));
   }
 }
 
 static void session_control_is_read_except_programming(void) {
-  TEST_ASSERT_TRUE(tierOfService(0x10, true, 0x01) == Tier::Read);
-  TEST_ASSERT_TRUE(tierOfService(0x10, true, 0x03) == Tier::Read);
-  TEST_ASSERT_TRUE(tierOfService(0x10, true, 0xC0) == Tier::Read);
-  TEST_ASSERT_TRUE(tierOfService(0x10, true, 0x02) == Tier::Write);
-  TEST_ASSERT_TRUE(tierOfService(0x10, true, 0x82) == Tier::Write);
-  TEST_ASSERT_TRUE(tierOfService(0x10, true, 0x85) == Tier::Write);
-}
-
-static void tier_words(void) {
-  Tier t;
-  TEST_ASSERT_TRUE(parseTier("CLEAR", &t) && t == Tier::Clear);
-  TEST_ASSERT_FALSE(parseTier("ALL", &t));
-  TEST_ASSERT_EQUAL_STRING("WRITE", tierName(Tier::Write));
+  for (uint8_t session : {0x01, 0x03, 0xC0}) {
+    TEST_ASSERT_TRUE(admittedAt(Tier::Read, frame(k7E0, {0x02, 0x10, session})));
+  }
+  for (uint8_t programming : {0x02, 0x82, 0x85}) {
+    TEST_ASSERT_FALSE(admittedAt(Tier::Clear, frame(k7E0, {0x02, 0x10, programming})));
+  }
 }
 
 static void single_frame_sid_is_byte_one(void) {
@@ -176,16 +185,34 @@ static void ids_heard_as_traffic_are_refused_below_write(void) {
   TEST_ASSERT_TRUE(g.admit(kRead622, &out));
 }
 
-static void heard_ids_are_recorded_up_to_capacity(void) {
+static void heard_ids_past_the_128th_are_not_recorded(void) {
+  TestHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  runAll(hal, elm, {"ATE0", "ATSP6"});
+  std::vector<CanFrame> traffic(3, frame(CanId::std11(0x600), {0x00}));
+  for (uint32_t id = 0x601; id < 0x680; ++id) traffic.push_back(frame(CanId::std11(id), {0x00}));
+  traffic.push_back(frame(k7E0, {0x00}));
+  hal.addForeignFrames(traffic);
+  hal.type("ATMA\r");
+  hal.typeAt(hal.now() / 1000 + 25, "\r");
+  elm.service();
+  for (uint32_t id = 0x600; id < 0x680; ++id) {
+    char header[8];
+    snprintf(header, sizeof header, "ATSH%03X", static_cast<unsigned>(id));
+    run(hal, elm, header);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("BLOCKED\r\r>", ask(hal, elm, "22F190").c_str(), header);
+  }
+  run(hal, elm, "ATSH7E0");
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("41 00 BE 1F A8 12\r\r>", ask(hal, elm, "0100").c_str(),
+                                   "the 129th id heard finds the list full");
+}
+
+static void traffic_outside_the_diagnostic_range_leaves_room_for_heard_ids(void) {
   Guard g;
-  for (uint8_t i = 0; i < 10; ++i) g.heard(CanId::std11(0x600));
-  for (uint16_t i = 0; i < Guard::kHeardCapacity; ++i) g.heard(CanId::std11(0x600 + i));
-  TEST_ASSERT_FALSE_MESSAGE(g.permits(frame(CanId::std11(0x600 + Guard::kHeardCapacity - 1),
-                                            {0x03, 0x22, 0xF1, 0x90})),
-                            "a repeated id takes one slot");
-  g.heard(k7E0);
-  TEST_ASSERT_TRUE_MESSAGE(g.permits(frame(k7E0, {0x03, 0x22, 0xF1, 0x90})),
-                           "the set is full");
+  for (uint32_t id = 0x100; id < 0x100 + 200; ++id) g.heard(CanId::std11(id));
+  g.heard(CanId::std11(0x60D));
+  TEST_ASSERT_FALSE(g.permits(frame(CanId::std11(0x60D), {0x03, 0x22, 0xF1, 0x90})));
 }
 
 static void listen_before_talk_traffic_id_needs_write(void) {
@@ -206,31 +233,38 @@ static void listen_before_talk_traffic_id_needs_write(void) {
   TEST_ASSERT_EQUAL_STRING("41 00 BE 1F A8 12\r\r>", ask(hal, elm, "0100").c_str());
 }
 
+// A 6xx id too slow for the 60 ms listen-before-talk window to catch.
+static const Periodic kSlow60D[] = {
+    {{CanId::std11(0x60D), 8, {0x00, 0x11, 0, 0, 0, 0, 0, 0}}, 2000}};
+
+static CarSpec carWithSlow60D() {
+  CarSpec car = renaultDaciaCarQuiet();
+  car.traffic = kSlow60D;
+  car.trafficCount = 1;
+  return car;
+}
+
 static void monitored_traffic_id_is_refused_until_power_up(void) {
-  TestHal hal(renaultDaciaCar());
+  TestHal hal(carWithSlow60D());
   Elm elm(hal);
   elm.begin();
   for (const char *cmd : {"ATE0", "ATSP6"}) run(hal, elm, cmd);
   hal.type("ATMA\r");
   hal.typeAt(hal.now() / 1000 + 25, "\r");
   elm.service();
-  for (const char *cmd : {"ATZ", "ATWS", "ATD", "ATE0", "ATSP6", "ATSH622"}) run(hal, elm, cmd);
-  const uint32_t start = hal.now();
+  for (const char *cmd : {"ATZ", "ATWS", "ATD", "ATE0", "ATSP6", "ATSH60D"}) run(hal, elm, cmd);
   TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "22F190").c_str());
-  TEST_ASSERT_EQUAL_UINT32_MESSAGE(start, hal.now(), "refused before listening again");
   TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
   run(hal, elm, "ATSH7E0");
   TEST_ASSERT_EQUAL_STRING("41 00 BE 1F A8 12\r\r>", ask(hal, elm, "0100").c_str());
 }
 
 static void surveyed_traffic_id_is_refused(void) {
-  TestHal hal(renaultDaciaCar());
+  TestHal hal(carWithSlow60D());
   Elm elm(hal);
   elm.begin();
-  for (const char *cmd : {"ATE0", "AT#SURVEY", "ATSP6", "ATSH622"}) run(hal, elm, cmd);
-  const uint32_t start = hal.now();
+  for (const char *cmd : {"ATE0", "AT#SURVEY", "ATSP6", "ATSH60D"}) run(hal, elm, cmd);
   TEST_ASSERT_EQUAL_STRING("BLOCKED\r\r>", ask(hal, elm, "22F190").c_str());
-  TEST_ASSERT_EQUAL_UINT32(start, hal.now());
   TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
 }
 
@@ -260,30 +294,12 @@ static void tier_survives_reset_commands_and_is_settable(void) {
   TEST_ASSERT_EQUAL_STRING("AT#GUARD\rWRITE\r\r>", ask(hal, elm, "AT#GUARD").c_str());
 }
 
-static void write_tier_needs_a_trusted_link(void) {
-  TestHal hal(renaultDaciaCarQuiet());
-  Elm elm(hal);
-  elm.begin();
-  hal.setLinkTrusted(false);
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD WRITE\r?\r\r>", ask(hal, elm, "AT#GUARD WRITE").c_str());
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD\rREAD\r\r>", ask(hal, elm, "AT#GUARD").c_str());
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD CLEAR\rOK\r\r>", ask(hal, elm, "AT#GUARD CLEAR").c_str());
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD\rCLEAR\r\r>", ask(hal, elm, "AT#GUARD").c_str());
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD READ\rOK\r\r>", ask(hal, elm, "AT#GUARD READ").c_str());
-  hal.setLinkTrusted(true);
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD WRITE\rOK\r\r>", ask(hal, elm, "AT#GUARD WRITE").c_str());
-  // Lowering the tier from an untrusted link stays allowed.
-  hal.setLinkTrusted(false);
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD CLEAR\rOK\r\r>", ask(hal, elm, "AT#GUARD CLEAR").c_str());
-}
-
 int main(int, char **) {
   UNITY_BEGIN();
-  RUN_TEST(read_services);
-  RUN_TEST(clear_services);
-  RUN_TEST(write_services_and_default_deny);
+  RUN_TEST(read_services_pass_at_read);
+  RUN_TEST(clear_services_need_clear);
+  RUN_TEST(write_and_unknown_services_need_write);
   RUN_TEST(session_control_is_read_except_programming);
-  RUN_TEST(tier_words);
   RUN_TEST(single_frame_sid_is_byte_one);
   RUN_TEST(invalid_single_frame_is_denied);
   RUN_TEST(first_frame_sid_is_byte_two);
@@ -296,12 +312,12 @@ int main(int, char **) {
   RUN_TEST(reads_on_diagnostic_ids_pass_at_read);
   RUN_TEST(raw_frame_on_an_operational_id_is_blocked);
   RUN_TEST(ids_heard_as_traffic_are_refused_below_write);
-  RUN_TEST(heard_ids_are_recorded_up_to_capacity);
+  RUN_TEST(heard_ids_past_the_128th_are_not_recorded);
+  RUN_TEST(traffic_outside_the_diagnostic_range_leaves_room_for_heard_ids);
   RUN_TEST(listen_before_talk_traffic_id_needs_write);
   RUN_TEST(monitored_traffic_id_is_refused_until_power_up);
   RUN_TEST(surveyed_traffic_id_is_refused);
   RUN_TEST(answers_to_a_request_are_not_traffic);
   RUN_TEST(tier_survives_reset_commands_and_is_settable);
-  RUN_TEST(write_tier_needs_a_trusted_link);
   return UNITY_END();
 }

@@ -1,7 +1,3 @@
-// The WINC1500 as a WiFi ELM327 dongle: WPA/WPA2 access point (the WINC's
-// M2M_WIFI_SEC_WPA_PSK offers both), AP at 192.168.0.10, TCP port 35000, one
-// client (the WINC admits one station).
-//
 // WiFi101 AP-mode quirks absorbed here:
 //   - server.available() hands out a new client once, then only clients with
 //     data, so the accepted WiFiClient is kept.

@@ -143,7 +143,7 @@ The MKR1000's WiFi chip (WINC1500) runs an access point that behaves like a WiFi
 3. Connect.
 
 - One phone at a time. The WINC1500 accepts a single station.
-- While a phone is connected, it owns the adapter and USB input waits. USB works again when the phone disconnects. When one side takes over from the other, a line the other left without its CR is dropped, and a bare CR does not repeat the other side's last request.
+- While a phone is connected, it owns the adapter and anything typed on USB is discarded, so it never runs after the phone leaves. USB works again when the phone disconnects. When one side takes over from the other, a line the other left without its CR is dropped, and a bare CR does not repeat the other side's last request.
 - A phone that connects drops a `WRITE` tier back to `READ`. A `CLEAR` tier stays.
 - iPhone apps work over WiFi. They need the Local Network permission. iPhones cannot use the USB port.
 - `AT#WIFI` over USB prints the network, the WINC firmware version, and the connected phone's address.
@@ -180,7 +180,7 @@ Every frame the adapter transmits is classified by its diagnostic service before
 Below `WRITE` two rules decide which CAN ids the adapter may transmit on. A frame that breaks either one needs `WRITE`, whatever its bytes are.
 
 - The id must be a diagnostic id. Those are the 11-bit ids `600` to `7FF` and the 29-bit ids `18DAxxxx` and `18DBxxxx` (ISO 15765-4 normal fixed addressing, for example `18DA10F1` and `18DB33F1`).
-- The id must not be one the adapter has heard as bus traffic. Some cars use `6xx` ids for normal traffic. A Scenic II cluster takes `60D` and `625`, for example. The adapter records every id it hears in its listen-only windows. Those are listen-before-talk, `ATMA` and `AT#SURVEY`. Answers to its own requests are not recorded.
+- The id must not be one the adapter has heard as bus traffic. Some cars use `6xx` ids for normal traffic. A Scenic II cluster takes `60D` and `625`, for example. The adapter records every diagnostic id it hears in its listen-only windows. Those are listen-before-talk, `ATMA` and `AT#SURVEY`. Answers to its own requests are not recorded. Other ids need `WRITE` by the first rule, so they are not recorded.
 
 The adapter keeps up to 128 heard ids. Once the list is full, further ids are not recorded. Like the tier, the list lives in RAM until power-up. ATZ, ATWS and ATD keep it, and unplugging the board clears it.
 
@@ -247,7 +247,7 @@ Code layout:
 - `lib/elm/src/link_mux.*` decides which link (USB or a TCP client) owns the ELM session. The firmware and the simulator share it.
 
 ```sh
-pio test -e native                                         # 125 cases, no board, no car
+pio test -e native                                         # 126 cases, no board, no car
 pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim [--tcp 127.0.0.1:35000]
 uv run tools/compat/check_clients.py --sim .pio/build/sim/program [--tcp]
 uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo

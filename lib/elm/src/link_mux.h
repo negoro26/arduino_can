@@ -1,14 +1,12 @@
 // One ELM session, two links. While a TCP client is connected it is the
-// session (its bytes in, all output to it) and USB input stays unread in the
-// USB buffer; otherwise USB is. A new TCP connection replaces the old one
+// session (its bytes in, all output to it) and poll() reads and discards USB
+// input, so a command typed on USB never runs once the client leaves;
+// otherwise USB is the session. A new TCP connection replaces the old one
 // (phones reconnect without closing). Only poll() switches, and only between
 // commands, so a command's whole answer goes to the link that asked.
 //
 // TCP output is held and sent in chunks: WiFi101 refuses a write over 1400
-// bytes, and each write is one SPI command to the WINC. A chunk goes out when
-// it holds the `>` prompt, reaches 1400 bytes, or its first byte has waited
-// 20 ms (checked by write() and poll(), which run between receive windows
-// only), or on flush().
+// bytes, and each write is one SPI command to the WINC.
 
 #ifndef ELM_LINK_MUX_H
 #define ELM_LINK_MUX_H

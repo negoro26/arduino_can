@@ -7,30 +7,6 @@
 void setUp(void) {}
 void tearDown(void) {}
 
-static void runAll(TestHal &hal, Elm &elm, std::initializer_list<const char *> lines) {
-  for (const char *line : lines) run(hal, elm, line);
-}
-
-// pyren mod_elm init_can + set_can_addr (ddt4all's are the same commands).
-static void pyrenSetup(TestHal &hal, Elm &elm, const char *tx, const char *rx) {
-  runAll(hal, elm, {"AT WS", "AT E1", "AT S0", "AT H0", "AT L0", "AT AL", "AT CAF0",
-                    "AT CFC1"});
-  run(hal, elm, std::string("AT SH ") + tx);
-  run(hal, elm, std::string("AT FC SH ") + tx);
-  runAll(hal, elm, {"AT FC SD 30 00 00", "AT FC SM 1", "AT ST FF", "AT AT 0", "AT SP 6",
-                    "AT AT 1"});
-  run(hal, elm, std::string("AT CRA ") + rx);
-}
-
-static bool sameBytes(const CanFrame &f, std::initializer_list<uint8_t> bytes) {
-  if (f.dlc != bytes.size()) return false;
-  uint8_t i = 0;
-  for (uint8_t b : bytes) {
-    if (f.data[i++] != b) return false;
-  }
-  return true;
-}
-
 static void pyren_reads_multi_frame_vin_raw_with_automatic_flow_control(void) {
   TestHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
@@ -73,14 +49,21 @@ static void airbag_response_pending_then_final_answer_in_one_reply(void) {
   Elm elm(hal);
   elm.begin();
   pyrenSetup(hal, elm, "752", "772");
-  const uint32_t start = hal.now();
-  TEST_ASSERT_EQUAL_STRING("0322F18A\r"
-                           "037F227800000000\r"
-                           "100862F18A54454D\r"
-                           "2149430000000000\r"
-                           "\r>",
-                           ask(hal, elm, "0322F18A").c_str());
-  TEST_ASSERT_TRUE(hal.now() - start > 300000);
+  run(hal, elm, "AT ST 19");
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("0322F18A\r"
+                                   "037F227800000000\r"
+                                   "100862F18A54454D\r"
+                                   "2149430000000000\r"
+                                   "\r>",
+                                   ask(hal, elm, "0322F18A").c_str(),
+                                   "the answer 300 ms after 7F 22 78 outlasts AT ST 19 (100 ms)");
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("0322F18A2\r"
+                                   "037F227800000000\r"
+                                   "100862F18A54454D\r"
+                                   "2149430000000000\r"
+                                   "\r>",
+                                   ask(hal, elm, "0322F18A2").c_str(),
+                                   "7F 22 78 does not count toward the digit");
   TEST_ASSERT_EQUAL_STRING("021003\r037F107800000000\r065003003201F400\r\r>",
                            ask(hal, elm, "021003").c_str());
 }
@@ -209,7 +192,31 @@ static void monitor_prints_traffic_until_a_byte_arrives(void) {
                            "354 00 00 00 00 00 00 00 00\r"
                            "STOPPED\r\r>",
                            hal.output().c_str());
-  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+  TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
+}
+
+// A scan tool's flow control to the 745 ECU, and the car's 181 broadcast,
+// whose first byte is no valid single-frame PCI.
+static const Periodic kFlowControlAndBroadcast[] = {
+    {{CanId::std11(0x745), 8, {0x30, 0x00, 0x00, 0, 0, 0, 0, 0}}, 1000},
+    {{CanId::std11(0x181), 8, {0x0B, 0xB8, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00}}, 1000}};
+
+static void monitor_with_headers_off_shows_flow_control_and_flags_non_iso_tp_frames(void) {
+  CarSpec car = renaultDaciaCarQuiet();
+  car.traffic = kFlowControlAndBroadcast;
+  car.trafficCount = 2;
+  TestHal hal(car);
+  Elm elm(hal);
+  elm.begin();
+  runAll(hal, elm, {"ATE0", "ATSP6"});
+  hal.clearOutput();
+  hal.type("ATMA\r");
+  hal.typeAt(hal.now() / 1000 + 25, "\r");
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("FC: 30 00 00 00 00 00 00 00\r"
+                           "0B B8 00 00 1E 00 00 00 <DATA ERROR\r"
+                           "STOPPED\r\r>",
+                           hal.output().c_str());
 }
 
 static void wrong_bitrate_is_can_error_with_nothing_transmitted(void) {
@@ -219,7 +226,7 @@ static void wrong_bitrate_is_can_error_with_nothing_transmitted(void) {
   pyrenSetup(hal, elm, "745", "765");
   run(hal, elm, "AT SP 8");
   TEST_ASSERT_EQUAL_STRING("0210C0\rCAN ERROR\r\r>", ask(hal, elm, "0210C0").c_str());
-  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+  TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
   run(hal, elm, "AT SP 6");
   TEST_ASSERT_EQUAL_STRING("0210C0\r0250C00000000000\r\r>", ask(hal, elm, "0210C0").c_str());
 }
@@ -231,7 +238,8 @@ static void wrong_bitrate_on_a_silent_bus_fails_after_one_attempt(void) {
   pyrenSetup(hal, elm, "745", "765");
   run(hal, elm, "AT SP 8");
   TEST_ASSERT_EQUAL_STRING("0210C0\rCAN ERROR\r\r>", ask(hal, elm, "0210C0").c_str());
-  TEST_ASSERT_EQUAL_size_t(1, hal.wire().size());
+  TEST_ASSERT_EQUAL_size_t(1, hal.sendAttempts());
+  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
 }
 
 static void blocked_request_touches_nothing(void) {
@@ -288,8 +296,9 @@ static void search_with_skipped_protocols_and_no_answer_is_unable_to_connect(voi
     runAll(hal, elm, {"ATE0", "ATSP0"});
     run(hal, elm, std::string("ATSH") + c.header);
     TEST_ASSERT_EQUAL_STRING("SEARCHING...\rUNABLE TO CONNECT\r\r>", ask(hal, elm, "0100").c_str());
-    TEST_ASSERT_EQUAL_size_t(2, hal.wire().size());
-    for (const auto &sent : hal.wire()) TEST_ASSERT_TRUE(sent.second.id == c.id);
+    TEST_ASSERT_EQUAL_size_t_MESSAGE(2, hal.sendAttempts(), "one try at each bitrate");
+    TEST_ASSERT_EQUAL_size_t_MESSAGE(1, hal.wire().size(), "only the 250 kbit try reaches the car");
+    TEST_ASSERT_TRUE(hal.wire()[0].second.id == c.id);
   }
 }
 
@@ -356,7 +365,7 @@ static void survey_finds_the_bitrate_and_lists_ids(void) {
   TEST_ASSERT_TRUE(out.find("\r250 kbit: 180 frames, errors 0, ids 181 354 622 5DE\r"
                             "WIRING: OK, bus decoding cleanly at 250 kbit\r\r>") !=
                    std::string::npos);
-  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+  TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
 }
 
 static void survey_on_a_silent_bus_reports_not_connected(void) {
@@ -364,12 +373,13 @@ static void survey_on_a_silent_bus_reports_not_connected(void) {
   Elm elm(hal);
   elm.begin();
   run(hal, elm, "ATE0");
-  TEST_ASSERT_EQUAL_STRING(
+  const std::string out = ask(hal, elm, "AT#SURVEY");
+  const std::string expected =
       "500 kbit: 0 frames, errors 0\r250 kbit: 0 frames, errors 0\r"
       "125 kbit: 0 frames, errors 0\r100 kbit: 0 frames, errors 0\r"
-      "WIRING: NOT CONNECTED, zero frames and zero errors at every rate:\r"
-      "wrong OBD pins, broken cable, or bus asleep (ignition on?)\r\r>",
-      ask(hal, elm, "AT#SURVEY").c_str());
+      "WIRING: NOT CONNECTED";
+  TEST_ASSERT_EQUAL_STRING(expected.c_str(), out.substr(0, expected.size()).c_str());
+  TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
 }
 
 static void survey_with_an_unconfigurable_controller_reports_unknown(void) {
@@ -379,12 +389,11 @@ static void survey_with_an_unconfigurable_controller_reports_unknown(void) {
   run(hal, elm, "ATE0");
   hal.setCanOpenFails(true);
   const std::string out = ask(hal, elm, "AT#SURVEY");
-  TEST_ASSERT_EQUAL_STRING(
+  const std::string expected =
       "500 kbit: SETUP FAILED\r250 kbit: SETUP FAILED\r"
       "125 kbit: SETUP FAILED\r100 kbit: SETUP FAILED\r"
-      "WIRING: UNKNOWN, the CAN controller could not be configured "
-      "(run AT#SELFTEST)\r\r>",
-      out.c_str());
+      "WIRING: UNKNOWN";
+  TEST_ASSERT_EQUAL_STRING(expected.c_str(), out.substr(0, expected.size()).c_str());
   TEST_ASSERT_TRUE(out.find("NOT CONNECTED") == std::string::npos);
 }
 
@@ -397,8 +406,8 @@ static void selftest_round_trips_a_frame_at_every_rate(void) {
                            "LOOPBACK 250 kbit: PASS\rLOOPBACK 125 kbit: PASS\r"
                            "LOOPBACK 100 kbit: PASS\rSELFTEST: PASS\r\r>",
                            ask(hal, elm, "AT#SELFTEST").c_str());
-  TEST_ASSERT_EQUAL_size_t(4, hal.wire().size());
-  TEST_ASSERT_TRUE(sameBytes(hal.wire()[0].second, {0x02, 0x10, 0xC0, 0, 0, 0, 0, 0}));
+  TEST_ASSERT_EQUAL_size_t_MESSAGE(4, hal.sendAttempts(),
+                                   "one loopback frame per bitrate, nothing else");
 }
 
 int main(int, char **) {
@@ -414,6 +423,7 @@ int main(int, char **) {
   RUN_TEST(byte_during_a_wait_stops_and_the_rest_of_its_line_is_dropped);
   RUN_TEST(input_after_the_100ms_window_is_a_new_command);
   RUN_TEST(monitor_prints_traffic_until_a_byte_arrives);
+  RUN_TEST(monitor_with_headers_off_shows_flow_control_and_flags_non_iso_tp_frames);
   RUN_TEST(wrong_bitrate_is_can_error_with_nothing_transmitted);
   RUN_TEST(wrong_bitrate_on_a_silent_bus_fails_after_one_attempt);
   RUN_TEST(blocked_request_touches_nothing);

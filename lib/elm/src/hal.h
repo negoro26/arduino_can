@@ -31,9 +31,11 @@ class BusSide {
   // early, never late.
   virtual void idleUntil(Deadline d) = 0;
 
-  // (Re)configure. Resets the health counters. A call that changes only the
-  // mode is cheap (MCP2515: one CANCTRL write, no reset). false = the
-  // controller did not accept the configuration (hardware fault -> CAN ERROR).
+  // (Re)configure. Clears errorEvents and rxOverflow. A call that changes only
+  // the mode is cheap (MCP2515: one CANCTRL write, no reset) and keeps TEC and
+  // REC; they restart from zero only when the controller is reset: after
+  // canClose(), or for a new rate or acceptance. false = the controller did
+  // not accept the configuration (hardware fault -> CAN ERROR).
   virtual bool canOpen(Bitrate rate, CanMode mode, const Acceptance &acc) = 0;
   // Leave the bus entirely (config mode: no RX, no ACK).
   virtual void canClose() = 0;

@@ -4,19 +4,12 @@
 # deliberately left alone -- stripping them makes clang fall back to armv4t and
 # produces far more errors than it fixes.
 CompileFlags:
-  # Resolved relative to this file, so the database is found no matter which
-  # directory the editor was opened from. Generate it with:
-  #   pio run -t compiledb
-  # Without it clangd falls back to a bare `clang file.cpp` with no -I paths,
-  # and the first symptom is "'Arduino.h' file not found".
   CompilationDatabase: .
   Add:
     # Suppress (below) hides a diagnostic from the editor but clang still
     # COUNTS it against its default 20-error limit, then emits the fatal
     # "too many errors emitted, stopping now" at line 1 -- which is itself not
-    # suppressible and was the only diagnostic left showing. Removing the limit
-    # stops the cascade. Costs nothing: the authoritative error count comes
-    # from `pio run`, which uses arm-none-eabi-g++ and reports zero.
+    # suppressible.
     - -ferror-limit=0
 
 Diagnostics:
@@ -24,16 +17,13 @@ Diagnostics:
     # CMSIS device headers declare anonymous bit-fields carrying the
     # volatile-based __I / __O / __IO qualifiers. GCC accepts this; clang treats
     # it as an error and then aborts the translation unit, so every symbol in
-    # the file shows up undefined. Suppressing it is cosmetic: the real build
-    # uses arm-none-eabi-g++ and is unaffected.
+    # the file shows up undefined.
     - anon_bitfield_qualifiers
 
 ---
 # Test files are NOT in compile_commands.json: `pio run -t compiledb` only
 # describes the firmware build, and these are host tests built by
-# `pio test -e native`. Without the include paths below clangd cannot find
-# unity.h or the core, every TEST_ASSERT_* becomes an unknown symbol, and the
-# file is too broken for completion or code actions to work at all.
+# `pio test -e native`.
 If:
   PathMatch: test/.*
 CompileFlags:

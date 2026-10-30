@@ -100,7 +100,6 @@ static void tcp_takes_over_while_connected(void) {
   mux.poll(0);
   TEST_ASSERT_TRUE(mux.onTcp());
   TEST_ASSERT_EQUAL_STRING("ATZ\r", drain(mux).c_str());
-  TEST_ASSERT_EQUAL_STRING("ATI\r", usb.in.c_str());
   mux.write("ELM327 v1.5\r\r>", 14, 0);
   TEST_ASSERT_EQUAL_size_t(1, tcp.sent.size());
   TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>", tcp.sent[0].second.c_str());
@@ -121,7 +120,10 @@ static void usb_resumes_after_the_client_closes(void) {
   TEST_ASSERT_EQUAL_INT(kLinkClosed, mux.readByte());
   mux.poll(1);
   TEST_ASSERT_FALSE(mux.onTcp());
-  TEST_ASSERT_EQUAL_STRING("ATI\r", drain(mux).c_str());
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("", drain(mux).c_str(),
+                                   "USB input typed during the TCP session never runs");
+  usb.in = "ATD\r";
+  TEST_ASSERT_EQUAL_STRING("ATD\r", drain(mux).c_str());
 }
 
 static void a_new_connection_replaces_the_old_one(void) {
@@ -198,11 +200,9 @@ static void held_tcp_output_goes_after_20_ms(void) {
   TEST_ASSERT_EQUAL_STRING("X", tcp.sent[2].second.c_str());
 }
 
-// The firmware and simulator Hals in miniature: the CAN side from SimCanHal,
-// the serial side through a LinkMux, virtual time.
-class MuxHal final : public SimCanHal {
+class MuxHal final : public VirtualTimeHal {
  public:
-  explicit MuxHal(const CarSpec &car) : SimCanHal(car, 2), mux(usb, tcp) {}
+  explicit MuxHal(const CarSpec &car) : VirtualTimeHal(car, 2), mux(usb, tcp) {}
 
   FakeUsb usb;
   FakeTcp tcp;
@@ -211,7 +211,10 @@ class MuxHal final : public SimCanHal {
 
   void poll() { mux.poll(nowMs()); }
 
-  int readByte() override { return mux.readByte(); }
+  int readByte() override {
+    if (now() >= hangUpAtMs * 1000ull) tcp.open = false;
+    return mux.readByte();
+  }
   void write(const char *bytes, uint16_t length) override {
     mux.write(bytes, length, nowMs());
   }
@@ -223,22 +226,13 @@ class MuxHal final : public SimCanHal {
     snprintf(out, capacity, "WIFI TEST");
     return true;
   }
-  uint32_t nowMs() override { return nowUs_ / 1000; }
-  void idleUntil(Deadline d) override {
-    uint32_t target = hangUpAtMs == UINT32_MAX ? UINT32_MAX : hangUpAtMs * 1000;
-    if (!d.isNever()) target = std::min(target, d.atMs() * 1000);
-    uint32_t bus;
-    if (nextBusEvent(&bus)) target = std::min(target, bus);
-    if (target == UINT32_MAX) TEST_FAIL_MESSAGE("idleUntil(never) with nothing scheduled");
-    nowUs_ = std::max(nowUs_, target);
-    if (nowUs_ >= hangUpAtMs * 1000ull) tcp.open = false;
-  }
 
  protected:
-  uint32_t nowUs() override { return nowUs_; }
-
- private:
-  uint32_t nowUs_ = 0;
+  bool nextInputUs(uint32_t *atUs) const override {
+    if (hangUpAtMs == UINT32_MAX || !tcp.open) return false;
+    *atUs = hangUpAtMs * 1000;
+    return true;
+  }
 };
 
 static void elm_answers_on_the_session_link_only(void) {
@@ -248,19 +242,22 @@ static void elm_answers_on_the_session_link_only(void) {
   TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>", hal.usb.out.c_str());
   hal.usb.out.clear();
 
-  hal.usb.in = "ATI\r";
   hal.tcp.connect("ATI\rATE0\r");
   hal.poll();
+  hal.usb.in = "ATI\r";
   elm.service();
   TEST_ASSERT_EQUAL_size_t(2, hal.tcp.sent.size());
   TEST_ASSERT_EQUAL_STRING("ATI\rELM327 v1.5\r\r>", hal.tcp.sent[0].second.c_str());
   TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>", hal.tcp.sent[1].second.c_str());
   TEST_ASSERT_EQUAL_STRING("", hal.usb.out.c_str());
-  TEST_ASSERT_EQUAL_STRING("ATI\r", hal.usb.in.c_str());
 
   hal.tcp.open = false;
   elm.service();
   hal.poll();
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("", hal.usb.out.c_str(),
+                                   "USB input typed during the phone session never runs");
+  hal.usb.in = "ATI\r";
   elm.service();
   // Echo stays off: switching links does not reset the settings.
   TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>", hal.usb.out.c_str());
@@ -270,10 +267,10 @@ static void guard_write_is_refused_over_tcp(void) {
   MuxHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
   elm.begin();
-  hal.tcp.connect("ATE0\rAT#GUARD WRITE\rAT#GUARD CLEAR\rAT#GUARD\r");
+  hal.tcp.connect("ATE0\rAT#GUARD WRITE\rAT#GUARD\rAT#GUARD CLEAR\rAT#GUARD\r");
   hal.poll();
   elm.service();
-  TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>?\r\r>OK\r\r>CLEAR\r\r>", hal.tcp.all().c_str());
+  TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>?\r\r>READ\r\r>OK\r\r>CLEAR\r\r>", hal.tcp.all().c_str());
 
   hal.tcp.open = false;
   elm.service();

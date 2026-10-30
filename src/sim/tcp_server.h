@@ -1,6 +1,3 @@
-// The simulator's WiFi: a TCP listener standing in for the WINC1500's, one
-// client at a time.
-
 #ifndef TCP_SERVER_H
 #define TCP_SERVER_H
 

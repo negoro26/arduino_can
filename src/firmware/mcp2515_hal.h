@@ -1,21 +1,13 @@
-// The firmware Hal: millis() + the MKR CAN shield's MCP2515 + the session
-// link, native USB CDC or the WINC1500's TCP link (wifi_link.h) as LinkMux
-// picks it.
-//
 // Every MCP2515 quirk the core must not know about is absorbed here:
 //   - TXB0 only. The chip sends the highest-numbered pending buffer first, so
 //     several buffers would reorder consecutive frames.
 //   - One-shot mode set by a raw CANCTRL write. The library's
 //     setNormalOneShotMode() compares CANSTAT.OPMOD against a value that
 //     includes the OSM bit, so it always spins 10 ms and returns ERROR_FAIL.
-//   - A frame is retried (3 attempts in all) only after a clean arbitration
-//     loss, never after a bus error (tx_attempt.h).
-//   - RX buffers are read in arrival order under BUKT rollover (rx_order.h).
 //   - Registers the library keeps private (CANINTF, EFLG, TXB0CTRL, CANSTAT)
-//     are read with raw SPI, as the probe did.
+//     are read with raw SPI.
 // The INT pin (D7) is not used: polling CANINTF is one 3-byte SPI read
-// (a few us against ~230 us between consecutive frames), and it keeps the
-// receive path independent of a pin the bring-up probe never exercised.
+// (a few us against ~230 us between consecutive frames).
 
 #ifndef MCP2515_HAL_H
 #define MCP2515_HAL_H
@@ -31,7 +23,6 @@
 class Mcp2515Hal : public Hal {
  public:
   Mcp2515Hal();
-  // USB first, then the WiFi access point; USB works whatever WiFi does.
   void begin();
   // Between commands only (see LinkMux::poll).
   void pollLinks();

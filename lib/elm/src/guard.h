@@ -1,9 +1,3 @@
-// The device-level write guard and the single transmit choke point.
-//
-// BusSide::canSend() accepts only a ClearedFrame, and only Guard::admit() can
-// put bytes into one. Requests in both CAF modes, automatic flow control and
-// the self-test loopback frame all reach the controller through admit().
-//
 // The guard classifies the EXACT bytes that will be on the wire, with data[0]
 // read as the ISO-TP PCI. CAF1 frames are built (PCI included) before they are
 // admitted, so one rule covers CAF0 and CAF1. Below WRITE only diagnostic ids
@@ -55,12 +49,13 @@ class Guard {
 
   // An id seen as bus traffic in a listen-only window (listen-before-talk,
   // ATMA, AT#SURVEY). Never one received while a request awaits its answer:
-  // those frames are answers to us. Once kHeardCapacity ids are recorded,
-  // further ones are not.
-  void heard(CanId id) { heard_.add(id); }
+  // those frames are answers to us. Only diagnostic ids are recorded: any
+  // other id needs WRITE already, and recording it would only use up a slot.
+  // Once kHeardCapacity ids are recorded, further ones are not.
+  void heard(CanId id);
   static constexpr uint8_t kHeardCapacity = 128;
 
-  // THE choke point. Fills *out iff `f` may be transmitted. A first frame is
+  // Fills *out iff `f` may be transmitted. A first frame is
   // remembered (even when refused) so its consecutive frames inherit its
   // verdict; the comparison happens at admit time, so a CF sent after
   // `AT#GUARD READ` is judged against the new, lower tier.
