@@ -198,9 +198,9 @@ static void held_tcp_output_goes_after_20_ms(void) {
   TEST_ASSERT_EQUAL_STRING("X", tcp.sent[2].second.c_str());
 }
 
-class MuxHal final : public SimCanHal {
+class MuxHal final : public VirtualTimeHal {
  public:
-  explicit MuxHal(const CarSpec &car) : SimCanHal(car, 2), mux(usb, tcp) {}
+  explicit MuxHal(const CarSpec &car) : VirtualTimeHal(car, 2), mux(usb, tcp) {}
 
   FakeUsb usb;
   FakeTcp tcp;
@@ -209,7 +209,10 @@ class MuxHal final : public SimCanHal {
 
   void poll() { mux.poll(nowMs()); }
 
-  int readByte() override { return mux.readByte(); }
+  int readByte() override {
+    if (now() >= hangUpAtMs * 1000ull) tcp.open = false;
+    return mux.readByte();
+  }
   void write(const char *bytes, uint16_t length) override {
     mux.write(bytes, length, nowMs());
   }
@@ -221,22 +224,13 @@ class MuxHal final : public SimCanHal {
     snprintf(out, capacity, "WIFI TEST");
     return true;
   }
-  uint32_t nowMs() override { return nowUs_ / 1000; }
-  void idleUntil(Deadline d) override {
-    uint32_t target = hangUpAtMs == UINT32_MAX ? UINT32_MAX : hangUpAtMs * 1000;
-    if (!d.isNever()) target = std::min(target, d.atMs() * 1000);
-    uint32_t bus;
-    if (nextBusEvent(&bus)) target = std::min(target, bus);
-    if (target == UINT32_MAX) TEST_FAIL_MESSAGE("idleUntil(never) with nothing scheduled");
-    nowUs_ = std::max(nowUs_, target);
-    if (nowUs_ >= hangUpAtMs * 1000ull) tcp.open = false;
-  }
 
  protected:
-  uint32_t nowUs() override { return nowUs_; }
-
- private:
-  uint32_t nowUs_ = 0;
+  bool nextInputUs(uint32_t *atUs) const override {
+    if (hangUpAtMs == UINT32_MAX || !tcp.open) return false;
+    *atUs = hangUpAtMs * 1000;
+    return true;
+  }
 };
 
 static void elm_answers_on_the_session_link_only(void) {
@@ -268,10 +262,10 @@ static void guard_write_is_refused_over_tcp(void) {
   MuxHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
   elm.begin();
-  hal.tcp.connect("ATE0\rAT#GUARD WRITE\rAT#GUARD CLEAR\rAT#GUARD\r");
+  hal.tcp.connect("ATE0\rAT#GUARD WRITE\rAT#GUARD\rAT#GUARD CLEAR\rAT#GUARD\r");
   hal.poll();
   elm.service();
-  TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>?\r\r>OK\r\r>CLEAR\r\r>", hal.tcp.all().c_str());
+  TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>?\r\r>READ\r\r>OK\r\r>CLEAR\r\r>", hal.tcp.all().c_str());
 
   hal.tcp.open = false;
   elm.service();

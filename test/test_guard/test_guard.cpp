@@ -260,22 +260,6 @@ static void tier_survives_reset_commands_and_is_settable(void) {
   TEST_ASSERT_EQUAL_STRING("AT#GUARD\rWRITE\r\r>", ask(hal, elm, "AT#GUARD").c_str());
 }
 
-static void write_tier_needs_a_trusted_link(void) {
-  TestHal hal(renaultDaciaCarQuiet());
-  Elm elm(hal);
-  elm.begin();
-  hal.setLinkTrusted(false);
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD WRITE\r?\r\r>", ask(hal, elm, "AT#GUARD WRITE").c_str());
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD\rREAD\r\r>", ask(hal, elm, "AT#GUARD").c_str());
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD CLEAR\rOK\r\r>", ask(hal, elm, "AT#GUARD CLEAR").c_str());
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD\rCLEAR\r\r>", ask(hal, elm, "AT#GUARD").c_str());
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD READ\rOK\r\r>", ask(hal, elm, "AT#GUARD READ").c_str());
-  hal.setLinkTrusted(true);
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD WRITE\rOK\r\r>", ask(hal, elm, "AT#GUARD WRITE").c_str());
-  hal.setLinkTrusted(false);
-  TEST_ASSERT_EQUAL_STRING("AT#GUARD CLEAR\rOK\r\r>", ask(hal, elm, "AT#GUARD CLEAR").c_str());
-}
-
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(read_services);
@@ -301,6 +285,5 @@ int main(int, char **) {
   RUN_TEST(surveyed_traffic_id_is_refused);
   RUN_TEST(answers_to_a_request_are_not_traffic);
   RUN_TEST(tier_survives_reset_commands_and_is_settable);
-  RUN_TEST(write_tier_needs_a_trusted_link);
   return UNITY_END();
 }

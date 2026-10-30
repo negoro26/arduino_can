@@ -209,7 +209,7 @@ static void monitor_prints_traffic_until_a_byte_arrives(void) {
                            "354 00 00 00 00 00 00 00 00\r"
                            "STOPPED\r\r>",
                            hal.output().c_str());
-  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+  TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
 }
 
 static void wrong_bitrate_is_can_error_with_nothing_transmitted(void) {
@@ -219,7 +219,7 @@ static void wrong_bitrate_is_can_error_with_nothing_transmitted(void) {
   pyrenSetup(hal, elm, "745", "765");
   run(hal, elm, "AT SP 8");
   TEST_ASSERT_EQUAL_STRING("0210C0\rCAN ERROR\r\r>", ask(hal, elm, "0210C0").c_str());
-  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+  TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
   run(hal, elm, "AT SP 6");
   TEST_ASSERT_EQUAL_STRING("0210C0\r0250C00000000000\r\r>", ask(hal, elm, "0210C0").c_str());
 }
@@ -231,7 +231,8 @@ static void wrong_bitrate_on_a_silent_bus_fails_after_one_attempt(void) {
   pyrenSetup(hal, elm, "745", "765");
   run(hal, elm, "AT SP 8");
   TEST_ASSERT_EQUAL_STRING("0210C0\rCAN ERROR\r\r>", ask(hal, elm, "0210C0").c_str());
-  TEST_ASSERT_EQUAL_size_t(1, hal.wire().size());
+  TEST_ASSERT_EQUAL_size_t(1, hal.sendAttempts());
+  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
 }
 
 static void blocked_request_touches_nothing(void) {
@@ -288,8 +289,9 @@ static void search_with_skipped_protocols_and_no_answer_is_unable_to_connect(voi
     runAll(hal, elm, {"ATE0", "ATSP0"});
     run(hal, elm, std::string("ATSH") + c.header);
     TEST_ASSERT_EQUAL_STRING("SEARCHING...\rUNABLE TO CONNECT\r\r>", ask(hal, elm, "0100").c_str());
-    TEST_ASSERT_EQUAL_size_t(2, hal.wire().size());
-    for (const auto &sent : hal.wire()) TEST_ASSERT_TRUE(sent.second.id == c.id);
+    TEST_ASSERT_EQUAL_size_t_MESSAGE(2, hal.sendAttempts(), "one try at each bitrate");
+    TEST_ASSERT_EQUAL_size_t_MESSAGE(1, hal.wire().size(), "only the 250 kbit try reaches the car");
+    TEST_ASSERT_TRUE(hal.wire()[0].second.id == c.id);
   }
 }
 
@@ -356,7 +358,7 @@ static void survey_finds_the_bitrate_and_lists_ids(void) {
   TEST_ASSERT_TRUE(out.find("\r250 kbit: 180 frames, errors 0, ids 181 354 622 5DE\r"
                             "WIRING: OK, bus decoding cleanly at 250 kbit\r\r>") !=
                    std::string::npos);
-  TEST_ASSERT_EQUAL_size_t(0, hal.wire().size());
+  TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
 }
 
 static void survey_on_a_silent_bus_reports_not_connected(void) {
@@ -397,8 +399,7 @@ static void selftest_round_trips_a_frame_at_every_rate(void) {
                            "LOOPBACK 250 kbit: PASS\rLOOPBACK 125 kbit: PASS\r"
                            "LOOPBACK 100 kbit: PASS\rSELFTEST: PASS\r\r>",
                            ask(hal, elm, "AT#SELFTEST").c_str());
-  TEST_ASSERT_EQUAL_size_t(4, hal.wire().size());
-  TEST_ASSERT_TRUE(sameBytes(hal.wire()[0].second, {0x02, 0x10, 0xC0, 0, 0, 0, 0, 0}));
+  TEST_ASSERT_TRUE_MESSAGE(hal.wire().empty(), "loopback frames never reach the car");
 }
 
 int main(int, char **) {
