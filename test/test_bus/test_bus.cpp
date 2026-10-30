@@ -19,6 +19,15 @@ static const CarSpec kThreeObdCar = {kThreeObdEcus, 3, nullptr, 0, Bitrate::k500
 
 static const Periodic kEvery50Ms[] = {
     {{CanId::std11(0x181), 8, {0x0B, 0xB8, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00}}, 50}};
+static const Periodic kEverySecond[] = {
+    {{CanId::std11(0x181), 8, {0x0B, 0xB8, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00}}, 1000}};
+
+static CarSpec quietCarWith(const Periodic *traffic) {
+  CarSpec car = renaultDaciaCarQuiet();
+  car.traffic = traffic;
+  car.trafficCount = 1;
+  return car;
+}
 
 static void expectListenOnly(TestHal &hal, const char *after) {
   TEST_ASSERT_TRUE_MESSAGE(hal.controllerMode() == CanMode::ListenOnly, after);
@@ -104,11 +113,8 @@ static void cfc0_sends_no_flow_control(void) {
 }
 
 static void listen_before_talk_hears_a_50_ms_periodic_at_any_phase(void) {
-  CarSpec car = renaultDaciaCarQuiet();
-  car.traffic = kEvery50Ms;
-  car.trafficCount = 1;
   for (uint32_t phaseMs = 0; phaseMs < 50; phaseMs += 10) {
-    TestHal hal(car);
+    TestHal hal(quietCarWith(kEvery50Ms));
     Elm elm(hal);
     elm.begin();
     runAll(hal, elm, {"ATE0", "ATSP8", "ATSH7E0"});
@@ -116,6 +122,20 @@ static void listen_before_talk_hears_a_50_ms_periodic_at_any_phase(void) {
     TEST_ASSERT_EQUAL_STRING("CAN ERROR\r\r>", ask(hal, elm, "0100").c_str());
     TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
   }
+}
+
+static void listen_before_talk_counts_only_errors_inside_its_window(void) {
+  TestHal hal(quietCarWith(kEverySecond));
+  Elm elm(hal);
+  elm.begin();
+  runAll(hal, elm, {"ATE0", "ATSP8", "ATSH7E0"});
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("CAN ERROR\r\r>", ask(hal, elm, "0100").c_str(),
+                                   "the window hears the 500 kbit frame as errors");
+  TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
+  hal.sleepMs(1100);
+  TEST_ASSERT_EQUAL_STRING("CAN ERROR\r\r>", ask(hal, elm, "0100").c_str());
+  TEST_ASSERT_EQUAL_size_t_MESSAGE(1, hal.sendAttempts(),
+                                   "a window between two frames hears nothing, as on a silent bus");
 }
 
 static void frames_left_from_an_earlier_request_are_not_printed(void) {
@@ -163,6 +183,7 @@ int main(int, char **) {
   RUN_TEST(a_frame_the_controller_drops_ends_in_buffer_full);
   RUN_TEST(cfc0_sends_no_flow_control);
   RUN_TEST(listen_before_talk_hears_a_50_ms_periodic_at_any_phase);
+  RUN_TEST(listen_before_talk_counts_only_errors_inside_its_window);
   RUN_TEST(frames_left_from_an_earlier_request_are_not_printed);
   RUN_TEST(a_count_digit_of_0_sends_without_waiting);
   RUN_TEST(k_line_protocols_are_unable_to_connect);

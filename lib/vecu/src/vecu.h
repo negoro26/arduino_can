@@ -109,8 +109,9 @@ class SimBus {
   static constexpr uint8_t kMaxSlots = 32;
 
   SimBus(VirtualCar &car, uint8_t rxSlots);
-  // Returns true when the RX slots were cleared (rate/acceptance change or a
-  // closed controller), as a reset MCP2515 would.
+  // Returns true when the controller was reset (rate/acceptance change or a
+  // closed controller): RX slots, TEC and REC cleared, as on the MCP2515. A
+  // mode-only change keeps them; errorEvents and rxOverflow restart either way.
   bool open(Bitrate rate, CanMode mode, const Acceptance &acc, uint32_t nowUs);
   void close(uint32_t nowUs);
   TxStatus send(const CanFrame &f, uint32_t nowUs);

@@ -308,7 +308,7 @@ bool SimBus::open(Bitrate rate, CanMode mode, const Acceptance &acc,
   rate_ = rate;
   mode_ = mode;
   acc_ = acc;
-  health_ = CanHealth{};
+  health_ = reset ? CanHealth{} : CanHealth{health_.tec, health_.rec, 0, false};
   return reset;
 }
 
