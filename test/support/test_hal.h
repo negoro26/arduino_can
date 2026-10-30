@@ -161,10 +161,34 @@ inline void run(TestHal &hal, Elm &elm, const std::string &line) {
   elm.service();
 }
 
+inline void runAll(TestHal &hal, Elm &elm, std::initializer_list<const char *> lines) {
+  for (const char *line : lines) run(hal, elm, line);
+}
+
+// pyren mod_elm init_can + set_can_addr (ddt4all's are the same commands).
+inline void pyrenSetup(TestHal &hal, Elm &elm, const char *tx, const char *rx) {
+  runAll(hal, elm, {"AT WS", "AT E1", "AT S0", "AT H0", "AT L0", "AT AL", "AT CAF0",
+                    "AT CFC1"});
+  run(hal, elm, std::string("AT SH ") + tx);
+  run(hal, elm, std::string("AT FC SH ") + tx);
+  runAll(hal, elm, {"AT FC SD 30 00 00", "AT FC SM 1", "AT ST FF", "AT AT 0", "AT SP 6",
+                    "AT AT 1"});
+  run(hal, elm, std::string("AT CRA ") + rx);
+}
+
 inline std::string ask(TestHal &hal, Elm &elm, const std::string &line) {
   hal.clearOutput();
   run(hal, elm, line);
   return hal.output();
+}
+
+inline bool sameBytes(const CanFrame &f, std::initializer_list<uint8_t> bytes) {
+  if (f.dlc != bytes.size()) return false;
+  uint8_t i = 0;
+  for (uint8_t b : bytes) {
+    if (f.data[i++] != b) return false;
+  }
+  return true;
 }
 
 #endif  // TEST_HAL_H

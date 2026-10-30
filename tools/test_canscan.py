@@ -1,6 +1,7 @@
 import pytest
 
 from canscan import (
+    Elm,
     Reply,
     decode_2180,
     decode_kwp_dtcs,
@@ -11,9 +12,51 @@ from canscan import (
     parse_frames,
     reassemble,
     sae_code,
+    scan_ecu,
     status_lines,
     survey_ids,
 )
+
+
+class FakeAdapter:
+    """The serial port of an ELM327 with echo off. A request answers `answers[request]` or
+    NO DATA and is logged with the header it went out on; ATMA prints `traffic`."""
+
+    def __init__(self, answers=None, traffic=()):
+        self.answers = answers or {}
+        self.traffic = list(traffic)
+        self.header = "7DF"
+        self.requests: list[tuple[str, str]] = []
+        self._out = bytearray()
+
+    @property
+    def in_waiting(self) -> int:
+        return len(self._out)
+
+    def reset_input_buffer(self) -> None:
+        self._out.clear()
+
+    def read(self, size: int = 1) -> bytes:
+        chunk = bytes(self._out[:size])
+        del self._out[:size]
+        return chunk
+
+    def write(self, data: bytes) -> None:
+        cmd = data.decode("ascii").strip().replace(" ", "").upper()
+        if cmd == "ATMA":
+            self._out += "".join(f"{line}\r" for line in self.traffic).encode()
+            return
+        self._out += ("\r".join(self._answer(cmd)) + "\r\r>").encode()
+
+    def _answer(self, cmd: str) -> list[str]:
+        if not cmd:
+            return ["STOPPED"]
+        if cmd.startswith("AT"):
+            if cmd.startswith("ATSH"):
+                self.header = cmd[4:]
+            return {"ATZ": ["ELM327 v1.5"], "ATI": ["ELM327 v1.5"], "AT#GUARD": ["?"]}.get(cmd, ["OK"])
+        self.requests.append((self.header, cmd))
+        return self.answers.get(cmd, ["NO DATA"])
 
 
 def elm_lines(can_id: str, payload: bytes) -> list[str]:
@@ -120,10 +163,12 @@ def test_response_pending_then_real_answer():
     assert reply.answer(0x765, 0x22)[3:] == b"237101234R"
 
 
-def test_response_pending_alone_keeps_the_responder_but_no_answer():
-    reply = Reply.parse(["765 03 7F 22 78 AA AA AA AA"])
-    assert 0x765 in reply.messages
-    assert reply.answer(0x765, 0x22) is None
+def test_a_module_answering_only_response_pending_is_listed_without_a_protocol():
+    pending = ["772 03 7F 10 78 AA AA AA AA"]
+    port = FakeAdapter(answers={"1003": pending, "10C0": pending})
+    ecu = scan_ecu(Elm(port), 0x752, 0x772, "Airbag-SRS")
+    assert ecu is not None and ecu.protocol == "?"
+    assert scan_ecu(Elm(FakeAdapter()), 0x752, 0x772, "Airbag-SRS") is None
 
 
 def test_interleaved_responders_are_keyed_by_id():

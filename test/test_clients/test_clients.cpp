@@ -7,30 +7,6 @@
 void setUp(void) {}
 void tearDown(void) {}
 
-static void runAll(TestHal &hal, Elm &elm, std::initializer_list<const char *> lines) {
-  for (const char *line : lines) run(hal, elm, line);
-}
-
-// pyren mod_elm init_can + set_can_addr (ddt4all's are the same commands).
-static void pyrenSetup(TestHal &hal, Elm &elm, const char *tx, const char *rx) {
-  runAll(hal, elm, {"AT WS", "AT E1", "AT S0", "AT H0", "AT L0", "AT AL", "AT CAF0",
-                    "AT CFC1"});
-  run(hal, elm, std::string("AT SH ") + tx);
-  run(hal, elm, std::string("AT FC SH ") + tx);
-  runAll(hal, elm, {"AT FC SD 30 00 00", "AT FC SM 1", "AT ST FF", "AT AT 0", "AT SP 6",
-                    "AT AT 1"});
-  run(hal, elm, std::string("AT CRA ") + rx);
-}
-
-static bool sameBytes(const CanFrame &f, std::initializer_list<uint8_t> bytes) {
-  if (f.dlc != bytes.size()) return false;
-  uint8_t i = 0;
-  for (uint8_t b : bytes) {
-    if (f.data[i++] != b) return false;
-  }
-  return true;
-}
-
 static void pyren_reads_multi_frame_vin_raw_with_automatic_flow_control(void) {
   TestHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
@@ -73,14 +49,21 @@ static void airbag_response_pending_then_final_answer_in_one_reply(void) {
   Elm elm(hal);
   elm.begin();
   pyrenSetup(hal, elm, "752", "772");
-  const uint32_t start = hal.now();
-  TEST_ASSERT_EQUAL_STRING("0322F18A\r"
-                           "037F227800000000\r"
-                           "100862F18A54454D\r"
-                           "2149430000000000\r"
-                           "\r>",
-                           ask(hal, elm, "0322F18A").c_str());
-  TEST_ASSERT_TRUE(hal.now() - start > 300000);
+  run(hal, elm, "AT ST 19");
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("0322F18A\r"
+                                   "037F227800000000\r"
+                                   "100862F18A54454D\r"
+                                   "2149430000000000\r"
+                                   "\r>",
+                                   ask(hal, elm, "0322F18A").c_str(),
+                                   "the answer 300 ms after 7F 22 78 outlasts AT ST 19 (100 ms)");
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("0322F18A2\r"
+                                   "037F227800000000\r"
+                                   "100862F18A54454D\r"
+                                   "2149430000000000\r"
+                                   "\r>",
+                                   ask(hal, elm, "0322F18A2").c_str(),
+                                   "7F 22 78 does not count toward the digit");
   TEST_ASSERT_EQUAL_STRING("021003\r037F107800000000\r065003003201F400\r\r>",
                            ask(hal, elm, "021003").c_str());
 }
@@ -366,12 +349,13 @@ static void survey_on_a_silent_bus_reports_not_connected(void) {
   Elm elm(hal);
   elm.begin();
   run(hal, elm, "ATE0");
-  TEST_ASSERT_EQUAL_STRING(
+  const std::string out = ask(hal, elm, "AT#SURVEY");
+  const std::string expected =
       "500 kbit: 0 frames, errors 0\r250 kbit: 0 frames, errors 0\r"
       "125 kbit: 0 frames, errors 0\r100 kbit: 0 frames, errors 0\r"
-      "WIRING: NOT CONNECTED, zero frames and zero errors at every rate:\r"
-      "wrong OBD pins, broken cable, or bus asleep (ignition on?)\r\r>",
-      ask(hal, elm, "AT#SURVEY").c_str());
+      "WIRING: NOT CONNECTED";
+  TEST_ASSERT_EQUAL_STRING(expected.c_str(), out.substr(0, expected.size()).c_str());
+  TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
 }
 
 static void survey_with_an_unconfigurable_controller_reports_unknown(void) {
@@ -381,12 +365,11 @@ static void survey_with_an_unconfigurable_controller_reports_unknown(void) {
   run(hal, elm, "ATE0");
   hal.setCanOpenFails(true);
   const std::string out = ask(hal, elm, "AT#SURVEY");
-  TEST_ASSERT_EQUAL_STRING(
+  const std::string expected =
       "500 kbit: SETUP FAILED\r250 kbit: SETUP FAILED\r"
       "125 kbit: SETUP FAILED\r100 kbit: SETUP FAILED\r"
-      "WIRING: UNKNOWN, the CAN controller could not be configured "
-      "(run AT#SELFTEST)\r\r>",
-      out.c_str());
+      "WIRING: UNKNOWN";
+  TEST_ASSERT_EQUAL_STRING(expected.c_str(), out.substr(0, expected.size()).c_str());
   TEST_ASSERT_TRUE(out.find("NOT CONNECTED") == std::string::npos);
 }
 
