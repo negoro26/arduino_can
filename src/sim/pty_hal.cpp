@@ -19,8 +19,9 @@ uint32_t PtyHal::nowUs() { return static_cast<uint32_t>(elapsedUs()); }
 
 uint32_t PtyHal::nowMs() { return static_cast<uint32_t>(elapsedUs() / 1000); }
 
-// Only the session's link is watched: the PTY's bytes stay unread while a TCP
-// client holds the session, and must not wake every wait.
+// Only the session's link is watched: while a TCP client holds the session,
+// PTY bytes wait for LinkMux::poll() to discard them and must not wake every
+// wait.
 void PtyHal::waitReadable(int64_t timeoutUs, bool listener) {
   if (links_.onTcp() && !tcp_.connected()) return;
   pollfd fds[2];

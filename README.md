@@ -143,7 +143,7 @@ The MKR1000's WiFi chip (WINC1500) runs an access point that behaves like a WiFi
 3. Connect.
 
 - One phone at a time. The WINC1500 accepts a single station.
-- While a phone is connected, it owns the adapter and USB input waits. USB works again when the phone disconnects. When one side takes over from the other, a line the other left without its CR is dropped, and a bare CR does not repeat the other side's last request.
+- While a phone is connected, it owns the adapter and anything typed on USB is discarded, so it never runs after the phone leaves. USB works again when the phone disconnects. When one side takes over from the other, a line the other left without its CR is dropped, and a bare CR does not repeat the other side's last request.
 - A phone that connects drops a `WRITE` tier back to `READ`. A `CLEAR` tier stays.
 - iPhone apps work over WiFi. They need the Local Network permission. iPhones cannot use the USB port.
 - `AT#WIFI` over USB prints the network, the WINC firmware version, and the connected phone's address.

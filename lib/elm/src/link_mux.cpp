@@ -3,6 +3,11 @@
 #include <string.h>
 
 void LinkMux::poll(uint32_t nowMs) {
+  if (onTcp_) {
+    uint8_t discarded[sizeof in_];
+    while (usb_.read(discarded, sizeof discarded) > 0) {
+    }
+  }
   if (tcp_.accept()) {
     switchTo(true);
   } else if (onTcp_ && !tcp_.connected()) {

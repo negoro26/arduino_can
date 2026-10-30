@@ -1,6 +1,7 @@
 // One ELM session, two links. While a TCP client is connected it is the
-// session (its bytes in, all output to it) and USB input stays unread in the
-// USB buffer; otherwise USB is. A new TCP connection replaces the old one
+// session (its bytes in, all output to it) and poll() reads and discards USB
+// input, so a command typed on USB never runs once the client leaves;
+// otherwise USB is the session. A new TCP connection replaces the old one
 // (phones reconnect without closing). Only poll() switches, and only between
 // commands, so a command's whole answer goes to the link that asked.
 //

@@ -100,7 +100,6 @@ static void tcp_takes_over_while_connected(void) {
   mux.poll(0);
   TEST_ASSERT_TRUE(mux.onTcp());
   TEST_ASSERT_EQUAL_STRING("ATZ\r", drain(mux).c_str());
-  TEST_ASSERT_EQUAL_STRING("ATI\r", usb.in.c_str());
   mux.write("ELM327 v1.5\r\r>", 14, 0);
   TEST_ASSERT_EQUAL_size_t(1, tcp.sent.size());
   TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>", tcp.sent[0].second.c_str());
@@ -121,7 +120,10 @@ static void usb_resumes_after_the_client_closes(void) {
   TEST_ASSERT_EQUAL_INT(kLinkClosed, mux.readByte());
   mux.poll(1);
   TEST_ASSERT_FALSE(mux.onTcp());
-  TEST_ASSERT_EQUAL_STRING("ATI\r", drain(mux).c_str());
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("", drain(mux).c_str(),
+                                   "USB input typed during the TCP session never runs");
+  usb.in = "ATD\r";
+  TEST_ASSERT_EQUAL_STRING("ATD\r", drain(mux).c_str());
 }
 
 static void a_new_connection_replaces_the_old_one(void) {
@@ -240,19 +242,22 @@ static void elm_answers_on_the_session_link_only(void) {
   TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>", hal.usb.out.c_str());
   hal.usb.out.clear();
 
-  hal.usb.in = "ATI\r";
   hal.tcp.connect("ATI\rATE0\r");
   hal.poll();
+  hal.usb.in = "ATI\r";
   elm.service();
   TEST_ASSERT_EQUAL_size_t(2, hal.tcp.sent.size());
   TEST_ASSERT_EQUAL_STRING("ATI\rELM327 v1.5\r\r>", hal.tcp.sent[0].second.c_str());
   TEST_ASSERT_EQUAL_STRING("ATE0\rOK\r\r>", hal.tcp.sent[1].second.c_str());
   TEST_ASSERT_EQUAL_STRING("", hal.usb.out.c_str());
-  TEST_ASSERT_EQUAL_STRING("ATI\r", hal.usb.in.c_str());
 
   hal.tcp.open = false;
   elm.service();
   hal.poll();
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("", hal.usb.out.c_str(),
+                                   "USB input typed during the phone session never runs");
+  hal.usb.in = "ATI\r";
   elm.service();
   // Echo stays off: switching links does not reset the settings.
   TEST_ASSERT_EQUAL_STRING("ELM327 v1.5\r\r>", hal.usb.out.c_str());
