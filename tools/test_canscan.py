@@ -9,9 +9,11 @@ from canscan import (
     decode_uds_dtcs,
     decode_vin,
     nrc_name,
+    parse_args,
     parse_frames,
     reassemble,
     sae_code,
+    scan,
     scan_ecu,
     status_lines,
     survey_ids,
@@ -153,6 +155,12 @@ def test_multiframe_with_a_missing_frame_is_dropped():
     assert reassemble(parse_frames(lines)[0x765]) == []
 
 
+@pytest.mark.parametrize("order", [[0, 1, 2, 2, 3, 4], [0, 1, 3, 2, 4]], ids=["repeated", "swapped"])
+def test_multiframe_out_of_sequence_is_dropped(order):
+    lines = elm_lines("765", bytes(range(30)))
+    assert reassemble(parse_frames([lines[i] for i in order])[0x765]) == []
+
+
 def test_response_pending_then_real_answer():
     reply = Reply.parse([
         "765 03 7F 22 78 AA AA AA AA",
@@ -211,3 +219,34 @@ def test_survey_ids_from_monitor_output():
         "STOPPED",
     ]
     assert survey_ids(lines) == [0x0C9, 0x1F6, 0x18DAF110, 0x7E0, 0x0C9]
+
+
+def test_requests_outside_the_read_services_are_refused_before_sending():
+    port = FakeAdapter()
+    elm = Elm(port)
+    for request in ("2EF19001", "3101FF00", "1101", "14FFFFFF", "04"):
+        with pytest.raises(ValueError):
+            elm.request(request)
+    assert port.requests == []
+    elm.request("14FFFFFF", clear=True)
+    assert port.requests == [("7DF", "14FFFFFF")]
+
+
+def scan_with(port, *flags):
+    return scan(Elm(port), parse_args(["fake", "--listen-ms", "1", *flags]))
+
+
+def test_scan_never_probes_a_request_id_heard_in_the_survey():
+    port = FakeAdapter(traffic=["622 00 81 00 00 00 00 00 00"])
+    report = scan_with(port, "--no-obd")
+    headers = {header for header, _ in port.requests}
+    assert "622" not in headers
+    assert "745" in headers
+    assert report.skipped_ecus == ["622->484 Steering Column"]
+
+
+@pytest.mark.parametrize("heard, obd_runs", [(0x7DF, False), (0x7E0, False), (0x7E7, False), (0x7E8, True)])
+def test_obd_is_skipped_when_its_request_ids_carry_traffic(heard, obd_runs):
+    port = FakeAdapter(traffic=[f"{heard:03X} 02 01 00 00 00 00 00 00"])
+    scan_with(port, "--no-renault")
+    assert bool(port.requests) == obd_runs
