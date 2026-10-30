@@ -50,6 +50,10 @@ static bool isDiagnosticId(CanId id) {
   return top == 0x18DA || top == 0x18DB;
 }
 
+void Guard::heard(CanId id) {
+  if (isDiagnosticId(id)) heard_.add(id);
+}
+
 Tier Guard::classify(const CanFrame &f) const {
   // A raw frame on an operational id can drive the car whatever its PCI byte
   // looks like.

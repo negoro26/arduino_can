@@ -194,6 +194,13 @@ static void the_guard_keeps_128_heard_ids(void) {
   }
 }
 
+static void traffic_outside_the_diagnostic_range_leaves_room_for_heard_ids(void) {
+  Guard g;
+  for (uint32_t id = 0x100; id < 0x100 + 200; ++id) g.heard(CanId::std11(id));
+  g.heard(CanId::std11(0x60D));
+  TEST_ASSERT_FALSE(g.permits(frame(CanId::std11(0x60D), {0x03, 0x22, 0xF1, 0x90})));
+}
+
 static void listen_before_talk_traffic_id_needs_write(void) {
   TestHal hal(renaultDaciaCar());
   Elm elm(hal);
@@ -292,6 +299,7 @@ int main(int, char **) {
   RUN_TEST(raw_frame_on_an_operational_id_is_blocked);
   RUN_TEST(ids_heard_as_traffic_are_refused_below_write);
   RUN_TEST(the_guard_keeps_128_heard_ids);
+  RUN_TEST(traffic_outside_the_diagnostic_range_leaves_room_for_heard_ids);
   RUN_TEST(listen_before_talk_traffic_id_needs_write);
   RUN_TEST(monitored_traffic_id_is_refused_until_power_up);
   RUN_TEST(surveyed_traffic_id_is_refused);

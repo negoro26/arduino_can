@@ -180,7 +180,7 @@ Every frame the adapter transmits is classified by its diagnostic service before
 Below `WRITE` two rules decide which CAN ids the adapter may transmit on. A frame that breaks either one needs `WRITE`, whatever its bytes are.
 
 - The id must be a diagnostic id. Those are the 11-bit ids `600` to `7FF` and the 29-bit ids `18DAxxxx` and `18DBxxxx` (ISO 15765-4 normal fixed addressing, for example `18DA10F1` and `18DB33F1`).
-- The id must not be one the adapter has heard as bus traffic. Some cars use `6xx` ids for normal traffic. A Scenic II cluster takes `60D` and `625`, for example. The adapter records every id it hears in its listen-only windows. Those are listen-before-talk, `ATMA` and `AT#SURVEY`. Answers to its own requests are not recorded.
+- The id must not be one the adapter has heard as bus traffic. Some cars use `6xx` ids for normal traffic. A Scenic II cluster takes `60D` and `625`, for example. The adapter records every diagnostic id it hears in its listen-only windows. Those are listen-before-talk, `ATMA` and `AT#SURVEY`. Answers to its own requests are not recorded. Other ids need `WRITE` by the first rule, so they are not recorded.
 
 The adapter keeps up to 128 heard ids. Once the list is full, further ids are not recorded. Like the tier, the list lives in RAM until power-up. ATZ, ATWS and ATD keep it, and unplugging the board clears it.
 

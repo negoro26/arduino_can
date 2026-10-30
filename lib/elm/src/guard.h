@@ -49,9 +49,10 @@ class Guard {
 
   // An id seen as bus traffic in a listen-only window (listen-before-talk,
   // ATMA, AT#SURVEY). Never one received while a request awaits its answer:
-  // those frames are answers to us. Once kHeardCapacity ids are recorded,
-  // further ones are not.
-  void heard(CanId id) { heard_.add(id); }
+  // those frames are answers to us. Only diagnostic ids are recorded: any
+  // other id needs WRITE already, and recording it would only use up a slot.
+  // Once kHeardCapacity ids are recorded, further ones are not.
+  void heard(CanId id);
   static constexpr uint8_t kHeardCapacity = 128;
 
   // Fills *out iff `f` may be transmitted. A first frame is
