@@ -1,3 +1,6 @@
+// No Arduino, heap, STL or exceptions, so this core builds unchanged for the
+// SAMD21 firmware, the native tests and the PTY simulator.
+
 #ifndef ELM_CAN_TYPES_H
 #define ELM_CAN_TYPES_H
 

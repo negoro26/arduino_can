@@ -1,3 +1,6 @@
+// No heap, STL or exceptions, because the loopback demo firmware runs the
+// virtual car on the SAMD21.
+
 #ifndef VECU_H
 #define VECU_H
 

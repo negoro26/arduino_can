@@ -11,6 +11,8 @@
 
 class PtyHal final : public SimCanHal {
  public:
+  // 32 RX slots rather than the chip's two, so a late wakeup on a busy host
+  // cannot fake BUFFER FULL.
   PtyHal(const CarSpec &car, const char *linkPath)
       : SimCanHal(car, 32), pty_(linkPath), links_(pty_, tcp_) {}
 
