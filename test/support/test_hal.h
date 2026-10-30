@@ -32,6 +32,12 @@ class VirtualTimeHal : public SimCanHal {
   void sleepMs(uint32_t ms) { sleepUs(ms * 1000); }
   void sleepUs(uint32_t us) { nowUs_ += us; }
   void setCanOpenFails(bool fails) { canOpenFails_ = fails; }
+  // Frames from nodes the car does not model, such as more ids than its four
+  // periodic sources. The next controller to listen in ListenOnly mode
+  // receives them in order, ahead of the car's frames.
+  void addForeignFrames(const std::vector<CanFrame> &frames) {
+    foreign_.insert(foreign_.end(), frames.begin(), frames.end());
+  }
 
   bool canOpen(Bitrate rate, CanMode mode, const Acceptance &acc) override {
     if (canOpenFails_ || !SimCanHal::canOpen(rate, mode, acc)) {
@@ -54,6 +60,15 @@ class VirtualTimeHal : public SimCanHal {
       wire_.push_back({nowUs_, f.frame()});
     }
     return status;
+  }
+
+  bool canReceive(CanFrame &out) override {
+    if (mode_ == CanMode::ListenOnly && !foreign_.empty()) {
+      out = foreign_.front();
+      foreign_.erase(foreign_.begin());
+      return true;
+    }
+    return SimCanHal::canReceive(out);
   }
 
   uint32_t nowMs() override {
@@ -102,6 +117,7 @@ class VirtualTimeHal : public SimCanHal {
   std::optional<CanMode> mode_;
   size_t sendAttempts_ = 0;
   std::vector<std::pair<uint32_t, CanFrame>> wire_;
+  std::vector<CanFrame> foreign_;
 };
 
 class TestHal final : public VirtualTimeHal {

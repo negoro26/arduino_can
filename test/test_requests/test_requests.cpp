@@ -30,6 +30,23 @@ static void a_negative_answer_ends_the_wait_unlike_response_pending(void) {
                            "7F 22 31 ends the request; only 7F xx 78 holds it for 5 s");
 }
 
+static const uint8_t kDidF191[] = {0x22, 0xF1, 0x91};
+static const uint8_t kFourByteNegative[] = {0x7F, 0x22, 0x78, 0x00};
+static const Exchange kFourByteAnswer[] = {
+    {kDidF191, sizeof kDidF191, kFourByteNegative, sizeof kFourByteNegative, 0}};
+static const EcuSpec kFourByteEcu = {"ECU", CanId::std11(0x7E0), CanId::std11(0x7E8), false,
+                                     kFourByteAnswer, 1, 2000};
+
+static void a_7f_xx_78_answer_longer_than_three_bytes_ends_the_wait(void) {
+  TestHal hal({&kFourByteEcu, 1, nullptr, 0, Bitrate::k500});
+  Elm elm(hal);
+  elm.begin();
+  runAll(hal, elm, {"ATE0", "ATS0", "ATCAF0", "ATSP6", "ATSH7E0", "ATST19"});
+  TEST_ASSERT_EQUAL_STRING("047F227800000000\r\r>", ask(hal, elm, "0322F191").c_str());
+  TEST_ASSERT_TRUE_MESSAGE(hal.now() - hal.wire().back().first < 110000,
+                           "only the 3-byte single frame 7F xx 78 holds the request for 5 s");
+}
+
 static void an_overlong_line_answers_question_mark(void) {
   TestHal hal(renaultDaciaCarQuiet());
   Elm elm(hal);
@@ -192,6 +209,7 @@ static void spaces_off_keeps_the_sequence_prefix(void) {
 int main(int, char **) {
   UNITY_BEGIN();
   RUN_TEST(a_negative_answer_ends_the_wait_unlike_response_pending);
+  RUN_TEST(a_7f_xx_78_answer_longer_than_three_bytes_ends_the_wait);
   RUN_TEST(an_overlong_line_answers_question_mark);
   RUN_TEST(a_request_too_long_for_one_frame_is_refused_and_not_sent);
   RUN_TEST(v1_sends_the_frame_at_its_own_length);

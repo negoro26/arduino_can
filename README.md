@@ -247,7 +247,7 @@ Code layout:
 - `lib/elm/src/link_mux.*` decides which link (USB or a TCP client) owns the ELM session. The firmware and the simulator share it.
 
 ```sh
-pio test -e native                                         # 124 cases, no board, no car
+pio test -e native                                         # 126 cases, no board, no car
 pio run -e sim && .pio/build/sim/program --link /tmp/elm327-sim [--tcp 127.0.0.1:35000]
 uv run tools/compat/check_clients.py --sim .pio/build/sim/program [--tcp]
 uv run tools/compat/check_clients.py --port /dev/ttyACM0   # board running mkr1000USB_demo

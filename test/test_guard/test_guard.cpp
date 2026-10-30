@@ -185,13 +185,27 @@ static void ids_heard_as_traffic_are_refused_below_write(void) {
   TEST_ASSERT_TRUE(g.admit(kRead622, &out));
 }
 
-static void the_guard_keeps_128_heard_ids(void) {
-  Guard g;
-  for (int i = 0; i < 1000; ++i) g.heard(CanId::std11(0x600));
-  for (uint32_t id = 0x601; id < 0x680; ++id) g.heard(CanId::std11(id));
+static void heard_ids_past_the_128th_are_not_recorded(void) {
+  TestHal hal(renaultDaciaCarQuiet());
+  Elm elm(hal);
+  elm.begin();
+  runAll(hal, elm, {"ATE0", "ATSP6"});
+  std::vector<CanFrame> traffic(3, frame(CanId::std11(0x600), {0x00}));
+  for (uint32_t id = 0x601; id < 0x680; ++id) traffic.push_back(frame(CanId::std11(id), {0x00}));
+  traffic.push_back(frame(k7E0, {0x00}));
+  hal.addForeignFrames(traffic);
+  hal.type("ATMA\r");
+  hal.typeAt(hal.now() / 1000 + 25, "\r");
+  elm.service();
   for (uint32_t id = 0x600; id < 0x680; ++id) {
-    TEST_ASSERT_FALSE(g.permits(frame(CanId::std11(id), {0x03, 0x22, 0xF1, 0x90})));
+    char header[8];
+    snprintf(header, sizeof header, "ATSH%03X", static_cast<unsigned>(id));
+    run(hal, elm, header);
+    TEST_ASSERT_EQUAL_STRING_MESSAGE("BLOCKED\r\r>", ask(hal, elm, "22F190").c_str(), header);
   }
+  run(hal, elm, "ATSH7E0");
+  TEST_ASSERT_EQUAL_STRING_MESSAGE("41 00 BE 1F A8 12\r\r>", ask(hal, elm, "0100").c_str(),
+                                   "the 129th id heard finds the list full");
 }
 
 static void traffic_outside_the_diagnostic_range_leaves_room_for_heard_ids(void) {
@@ -298,7 +312,7 @@ int main(int, char **) {
   RUN_TEST(reads_on_diagnostic_ids_pass_at_read);
   RUN_TEST(raw_frame_on_an_operational_id_is_blocked);
   RUN_TEST(ids_heard_as_traffic_are_refused_below_write);
-  RUN_TEST(the_guard_keeps_128_heard_ids);
+  RUN_TEST(heard_ids_past_the_128th_are_not_recorded);
   RUN_TEST(traffic_outside_the_diagnostic_range_leaves_room_for_heard_ids);
   RUN_TEST(listen_before_talk_traffic_id_needs_write);
   RUN_TEST(monitored_traffic_id_is_refused_until_power_up);

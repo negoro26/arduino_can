@@ -195,6 +195,30 @@ static void monitor_prints_traffic_until_a_byte_arrives(void) {
   TEST_ASSERT_EQUAL_size_t(0, hal.sendAttempts());
 }
 
+// A scan tool's flow control to the 745 ECU, and the car's 181 broadcast,
+// whose first byte is no valid single-frame PCI.
+static const Periodic kFlowControlAndBroadcast[] = {
+    {{CanId::std11(0x745), 8, {0x30, 0x00, 0x00, 0, 0, 0, 0, 0}}, 1000},
+    {{CanId::std11(0x181), 8, {0x0B, 0xB8, 0x00, 0x00, 0x1E, 0x00, 0x00, 0x00}}, 1000}};
+
+static void monitor_with_headers_off_shows_flow_control_and_flags_non_iso_tp_frames(void) {
+  CarSpec car = renaultDaciaCarQuiet();
+  car.traffic = kFlowControlAndBroadcast;
+  car.trafficCount = 2;
+  TestHal hal(car);
+  Elm elm(hal);
+  elm.begin();
+  runAll(hal, elm, {"ATE0", "ATSP6"});
+  hal.clearOutput();
+  hal.type("ATMA\r");
+  hal.typeAt(hal.now() / 1000 + 25, "\r");
+  elm.service();
+  TEST_ASSERT_EQUAL_STRING("FC: 30 00 00 00 00 00 00 00\r"
+                           "0B B8 00 00 1E 00 00 00 <DATA ERROR\r"
+                           "STOPPED\r\r>",
+                           hal.output().c_str());
+}
+
 static void wrong_bitrate_is_can_error_with_nothing_transmitted(void) {
   TestHal hal(renaultDaciaCar());
   Elm elm(hal);
@@ -382,7 +406,8 @@ static void selftest_round_trips_a_frame_at_every_rate(void) {
                            "LOOPBACK 250 kbit: PASS\rLOOPBACK 125 kbit: PASS\r"
                            "LOOPBACK 100 kbit: PASS\rSELFTEST: PASS\r\r>",
                            ask(hal, elm, "AT#SELFTEST").c_str());
-  TEST_ASSERT_TRUE_MESSAGE(hal.wire().empty(), "loopback frames never reach the car");
+  TEST_ASSERT_EQUAL_size_t_MESSAGE(4, hal.sendAttempts(),
+                                   "one loopback frame per bitrate, nothing else");
 }
 
 int main(int, char **) {
@@ -398,6 +423,7 @@ int main(int, char **) {
   RUN_TEST(byte_during_a_wait_stops_and_the_rest_of_its_line_is_dropped);
   RUN_TEST(input_after_the_100ms_window_is_a_new_command);
   RUN_TEST(monitor_prints_traffic_until_a_byte_arrives);
+  RUN_TEST(monitor_with_headers_off_shows_flow_control_and_flags_non_iso_tp_frames);
   RUN_TEST(wrong_bitrate_is_can_error_with_nothing_transmitted);
   RUN_TEST(wrong_bitrate_on_a_silent_bus_fails_after_one_attempt);
   RUN_TEST(blocked_request_touches_nothing);
