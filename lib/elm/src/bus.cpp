@@ -144,7 +144,6 @@ Outcome converse(BusSide &bus, Guard &guard, LinkState &link,
       return Outcome::CanError;
     }
     link.talk = LinkState::Talk::Allowed;
-    // The window may have heard the request id as traffic.
     if (!guard.admit(request, &cleared)) return Outcome::Blocked;
   }
 

@@ -12,7 +12,6 @@ void LinkMux::poll(uint32_t nowMs) {
   }
 }
 
-// Held output and buffered input belong to the link being dropped.
 void LinkMux::switchTo(bool tcp) {
   onTcp_ = tcp;
   ++switches_;

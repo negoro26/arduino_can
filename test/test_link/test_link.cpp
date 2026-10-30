@@ -198,8 +198,6 @@ static void held_tcp_output_goes_after_20_ms(void) {
   TEST_ASSERT_EQUAL_STRING("X", tcp.sent[2].second.c_str());
 }
 
-// The firmware and simulator Hals in miniature: the CAN side from SimCanHal,
-// the serial side through a LinkMux, virtual time.
 class MuxHal final : public SimCanHal {
  public:
   explicit MuxHal(const CarSpec &car) : SimCanHal(car, 2), mux(usb, tcp) {}

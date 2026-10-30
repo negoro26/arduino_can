@@ -272,7 +272,6 @@ static void write_tier_needs_a_trusted_link(void) {
   TEST_ASSERT_EQUAL_STRING("AT#GUARD READ\rOK\r\r>", ask(hal, elm, "AT#GUARD READ").c_str());
   hal.setLinkTrusted(true);
   TEST_ASSERT_EQUAL_STRING("AT#GUARD WRITE\rOK\r\r>", ask(hal, elm, "AT#GUARD WRITE").c_str());
-  // Lowering the tier from an untrusted link stays allowed.
   hal.setLinkTrusted(false);
   TEST_ASSERT_EQUAL_STRING("AT#GUARD CLEAR\rOK\r\r>", ask(hal, elm, "AT#GUARD CLEAR").c_str());
 }

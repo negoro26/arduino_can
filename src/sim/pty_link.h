@@ -1,6 +1,3 @@
-// The simulator's USB port: a raw-mode pseudo-terminal whose slave is
-// published as a symlink.
-
 #ifndef PTY_LINK_H
 #define PTY_LINK_H
 

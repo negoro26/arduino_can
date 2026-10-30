@@ -15,13 +15,12 @@ enum class Wake : uint8_t { Frame, Interrupted, Timeout };
 // reply to ddt4all's next command.
 constexpr uint16_t kInterruptLineRestMs = 100;
 
-// The ONLY blocking primitive. Order per iteration:
+// Order per iteration:
 //   1. a serial byte other than LF -> Interrupted (byte consumed and
 //      or kLinkClosed                 discarded, plus the rest of its line)
 //   2. a CAN frame                 -> Frame (polled before the clock, so a
 //                                     frame at the deadline is not lost)
 //   3. deadline passed             -> Timeout
-//   4. bus.idleUntil(d)            -> the only place test time advances
 Wake await(BusSide &bus, Deadline d, CanFrame *out);
 
 // Between transactions the controller sits in ListenOnly: it never ACKs or
@@ -68,18 +67,6 @@ enum class Outcome : uint8_t {
   UnableToConnect,
 };
 
-// Send one request on protocol p and collect the answer. Blocks until done.
-//
-//   f = requestFrame(); guard.admit(f) refused        -> Blocked
-//   rate unverified: listenBeforeTalk()
-//       interrupted -> Stopped; Mismatch/Fault        -> CanError (nothing sent)
-//       guard.admit(f) again, it may have heard f.id  -> Blocked
-//   drain stale frames; Normal (one-shot) with receiveFilter()
-//   canSend fails -> verdict dropped                  -> CanError
-//   R0 / count digit 0                                -> Sent
-//   listen (deadlines below); FC on every first frame (CFC1), via the guard
-//   back to ListenOnly -> Answered / NoData / Stopped / BufferFull
-//
 // Deadlines: ST before the first frame; after a frame the adaptive window,
 // except that while consecutive frames are owed after OUR flow control the
 // full ST applies (deliberate deviation from AT1/AT2: an ECU honouring STmin
@@ -89,7 +76,6 @@ Outcome converse(BusSide &bus, Guard &guard, LinkState &link,
                  const Settings &s, Protocol p, const HexRequest &req,
                  RxLog &log);
 
-// What AT SP 0 tries, in this order.
 constexpr Protocol kSearchOrder[] = {Protocol::Can11_500, Protocol::Can29_500,
                                      Protocol::Can11_250, Protocol::Can29_250};
 
@@ -97,13 +83,6 @@ constexpr Protocol kSearchOrder[] = {Protocol::Can11_500, Protocol::Can29_500,
 // The id differs per protocol: ATSH 7E0 is 29-bit 180007E0 on 7 and 9.
 bool searchable(const Guard &guard, const Settings &s, const HexRequest &req);
 
-// AT SP 0 search on the first request with no protocol found yet. Elm prints
-// "SEARCHING..." before calling. converse() per protocol in kSearchOrder, so
-// the guard and listen-before-talk apply to every attempt and a mismatched
-// bitrate is skipped without transmitting. A protocol whose frame the guard
-// refuses is skipped too. The first answer wins and sets s.protocol.current.
-// Stopped ends the search at once. Every protocol refused -> Blocked; nothing
-// found otherwise -> UnableToConnect.
 Outcome search(BusSide &bus, Guard &guard, LinkState &link, Settings &s,
                const HexRequest &req, RxLog &log);
 

@@ -39,8 +39,6 @@ constexpr uint8_t kReqopLoopback = 0x40;
 constexpr uint8_t kReqopListenOnly = 0x60;
 constexpr uint8_t kReqopConfig = 0x80;
 
-// Waiting for bus idle plus one frame at 250 kbit fits easily; a frame still
-// pending after this is aborted and reported as failed.
 constexpr uint32_t kTxTimeoutUs = 10000;
 constexpr uint32_t kModeChangeTimeoutMs = 10;
 
@@ -253,7 +251,7 @@ bool Mcp2515Hal::Controller::readRxb(uint8_t n, CanFrame &out) {
     hal.rawModify(kRegCanintf, n == 0 ? kIntfRx0 : kIntfRx1, 0);
     return false;
   }
-  if (rx.can_id & CAN_RTR_FLAG) return false;  // remote frames carry no data
+  if (rx.can_id & CAN_RTR_FLAG) return false;
   out.id = (rx.can_id & CAN_EFF_FLAG) ? CanId::ext29(rx.can_id & CAN_EFF_MASK)
                                       : CanId::std11(rx.can_id & CAN_SFF_MASK);
   out.dlc = rx.can_dlc;

@@ -1,5 +1,3 @@
-// Reading the MCP2515's two receive buffers in arrival order.
-//
 // With BUKT rollover a frame goes to RXB0, or to RXB1 when RXB0 is full. So
 // after RXB0 is read, a full RXB1 holds a frame older than anything that can
 // land in RXB0 from then on, and must be read next.
@@ -25,8 +23,6 @@ class RolloverOrder {
     }
     if (first & kRxb0Full) {
       const bool ok = c.readRxb(0, out);
-      // Second snapshot: whatever sits in RXB1 now arrived before anything
-      // that can land in the RXB0 we just freed.
       preferRxb1_ = (c.rxStatus() & kRxb1Full) != 0;
       return ok;
     }

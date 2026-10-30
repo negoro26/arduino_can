@@ -5,7 +5,7 @@
 void setUp(void) {}
 void tearDown(void) {}
 
-static const uint8_t kLost = kTxbAbtf | kTxbMloa;  // one-shot sets both
+static const uint8_t kLost = kTxbAbtf | kTxbMloa;
 
 static void clean_completion_is_sent(void) {
   TEST_ASSERT_TRUE(judgeTxAttempt(0x00, 0, 0, 0, 1) == TxVerdict::Sent);
@@ -25,7 +25,6 @@ static void third_attempt_is_the_last(void) {
   TEST_ASSERT_TRUE(judgeTxAttempt(kLost, 0, 0, 0, 3) == TxVerdict::Failed);
 }
 
-// Measured on the board with nothing on the CAN pins, one-shot, 500 kbit.
 static void lost_arbitration_with_a_rec_rise_fails(void) {
   TEST_ASSERT_TRUE(judgeTxAttempt(kLost, 0, 9, 0, 1) == TxVerdict::Failed);
   TEST_ASSERT_TRUE(judgeTxAttempt(kLost, 9, 10, 0, 1) == TxVerdict::Failed);

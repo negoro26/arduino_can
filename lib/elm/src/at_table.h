@@ -33,7 +33,6 @@ enum class AtShape : uint8_t {
   TierWord,
 };
 
-// Parsed argument; which fields are meaningful depends on the shape.
 struct AtArgs {
   uint32_t value;    // Bit, Digit012, Hex2, Dec4, Header/Pattern id bits, protocol
   uint32_t mask;     // Pattern: 1 where not X

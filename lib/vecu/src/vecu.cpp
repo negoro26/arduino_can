@@ -107,7 +107,6 @@ void VirtualEcu::answer(uint32_t nowUs) {
       match = &x;
     }
   }
-  // Functional (7DF) requests reach only the OBD-II services (modes 01-0A).
   if (functional_ && (match == nullptr || sid >= 0x10)) return;
   dueUs_ = nowUs + spec_->latencyUs;
   if (match == nullptr) {

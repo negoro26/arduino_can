@@ -61,8 +61,6 @@ void Elm::service() {
     linkSwitches_ = switches;
     line_.clear();
     last_[0] = '\0';
-    // WRITE unlocked over USB must not pass to whoever joins the WiFi next,
-    // for example after the laptop is unplugged from a board on pin 16.
     if (!hal_.linkTrusted() && guard_.tier() == Tier::Write) {
       guard_.setTier(Tier::Read);
     }
@@ -134,8 +132,6 @@ void Elm::runRequest(const char *line) {
   Outcome outcome;
   const Protocol p = set_.protocol.current;
   if (p == Protocol::None) {
-    // A request refused under every protocol must not even print
-    // SEARCHING..., let alone listen-before-talk on each one.
     if (!searchable(guard_, set_, req)) {
       print("BLOCKED");
       return;

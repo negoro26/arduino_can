@@ -1,7 +1,3 @@
-// Pure C++17: no Arduino, no heap, no STL, no exceptions, so it compiles
-// unchanged for the SAMD21 firmware, the native Unity tests and the PTY
-// simulator.
-
 #ifndef ELM_CAN_TYPES_H
 #define ELM_CAN_TYPES_H
 
@@ -59,7 +55,6 @@ class SeenIds {
   uint8_t count_ = 0;
 };
 
-// ISO 15765-2 reading of data[0].
 enum class Pci : uint8_t { Single, First, Consecutive, FlowControl, Other };
 Pci pciOf(const CanFrame &f);
 // Payload length of a single frame, 0 if its PCI is not a valid single frame.

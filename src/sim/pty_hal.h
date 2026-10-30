@@ -1,7 +1,3 @@
-// The simulator Hal: the virtual car on a simulated CAN bus, a PTY as the USB
-// port and, with --tcp, a TCP listener as the WiFi link, multiplexed by the
-// firmware's LinkMux.
-
 #ifndef PTY_HAL_H
 #define PTY_HAL_H
 
@@ -15,7 +11,6 @@
 
 class PtyHal final : public SimCanHal {
  public:
-  // 32 RX slots: host scheduling jitter must not fake BUFFER FULL.
   PtyHal(const CarSpec &car, const char *linkPath)
       : SimCanHal(car, 32), pty_(linkPath), links_(pty_, tcp_) {}
 

@@ -1,6 +1,3 @@
-// No heap, no STL, no exceptions: the same code runs in the PTY simulator, in
-// the native tests and in the loopback demo firmware.
-
 #ifndef VECU_H
 #define VECU_H
 

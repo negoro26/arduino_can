@@ -1,5 +1,3 @@
-// Judging one one-shot MCP2515 transmit attempt from the controller registers.
-//
 // In one-shot mode a lost arbitration sets ABTF as well as MLOA, and a frame
 // that hit a bus error can end the same way: with nothing on the CAN pins at
 // 500 kbit, TXB0CTRL reads ABTF|MLOA and REC rises by 9 per attempt. The flags

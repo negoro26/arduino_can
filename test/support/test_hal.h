@@ -15,7 +15,6 @@
 
 class TestHal final : public SimCanHal {
  public:
-  // rxSlots = 2: the MCP2515's two receive buffers.
   explicit TestHal(const CarSpec &car, uint8_t rxSlots = 2)
       : SimCanHal(car, rxSlots) {}
 
